@@ -27,10 +27,17 @@ var (
 var (
 	errNotRunning    = errors.New("olcRTC is not running")
 	errStartTimedOut = errors.New("olcRTC start timed out")
+	errStopTimedOut  = errors.New("olcRTC stop timed out")
 )
+
+const defaultStopTimeout = 10 * time.Second
 
 // ai-generated: StartCnc adapts the existing session YAML path to the iOS gomobile API.
 func StartCnc(configYAML, dataDir string) error {
+	if err := stopCurrent(defaultStopTimeout); err != nil {
+		return err
+	}
+
 	cfgPath, err := writeConfig(configYAML, dataDir)
 	if err != nil {
 		return err
@@ -46,9 +53,6 @@ func StartCnc(configYAML, dataDir string) error {
 	localSocksAddr := net.JoinHostPort(scfg.SOCKSHost, strconv.Itoa(scfg.SOCKSPort))
 
 	mu.Lock()
-	if cancel != nil {
-		cancel()
-	}
 	cancel = c
 	done = localDone
 	errRun = nil
@@ -74,9 +78,20 @@ func WaitReady(timeoutMillis int) error {
 	}
 
 	deadline := time.Now().Add(time.Duration(timeoutMillis) * time.Millisecond)
+	var sawStart bool
 	for {
 		err, pending := waitReadySnapshot()
+		if pending || !errors.Is(err, errNotRunning) {
+			sawStart = true
+		}
 		if !pending {
+			if errors.Is(err, errNotRunning) && !sawStart {
+				if time.Now().After(deadline) {
+					return errStartTimedOut
+				}
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
 			return err
 		}
 		if time.Now().After(deadline) {
@@ -88,14 +103,35 @@ func WaitReady(timeoutMillis int) error {
 
 // ai-generated: Stop cancels the active iOS tunnel session.
 func Stop() {
+	_ = stopCurrent(defaultStopTimeout)
+}
+
+func stopCurrent(timeout time.Duration) error {
 	mu.Lock()
 	cancelFunc := cancel
-	if cancel != nil {
-		cancel = nil
-	}
+	d := done
+	cancel = nil
+	socksAddr = ""
 	mu.Unlock()
+
 	if cancelFunc != nil {
 		cancelFunc()
+	}
+	if d == nil {
+		return nil
+	}
+	if timeout <= 0 {
+		<-d
+		return nil
+	}
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case <-d:
+		return nil
+	case <-timer.C:
+		return errStopTimedOut
 	}
 }
 
