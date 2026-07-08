@@ -255,3 +255,10 @@ cpu.prof
 .kirograph
 package.json
 package-lock.json
+.worktrees/
+tools/ios-testflight/build/
+tools/ios-testflight/fastlane/Preview.html
+tools/ios-testflight/fastlane/README.md
+tools/ios-testflight/fastlane/report.xml
+tools/ios-testflight/fastlane/screenshots/
+tools/ios-testflight/fastlane/test_output/

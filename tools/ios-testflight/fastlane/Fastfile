@@ -1,0 +1,800 @@
+# frozen_string_literal: true
+
+require "json"
+require "fileutils"
+require "plist"
+require "shellwords"
+require "spaceship"
+require "open3"
+require "uri"
+require "base64"
+require "time"
+
+default_platform(:ios)
+
+def repo_root
+  File.expand_path("../../..", __dir__)
+end
+
+def ios_app_dir
+  ENV.fetch("OLC_IOS_APP_DIR")
+end
+
+def scheme_name
+  "OlcClientiOS"
+end
+
+def project_path
+  File.join(ios_app_dir, "OlcClientiOS.xcodeproj")
+end
+
+def app_identifier
+  ENV.fetch("OLC_IOS_APP_IDENTIFIER")
+end
+
+def tunnel_identifier
+  ENV.fetch("OLC_IOS_TUNNEL_IDENTIFIER")
+end
+
+def app_group_identifier
+  ENV.fetch("OLC_IOS_APP_GROUP")
+end
+
+def team_id
+  ENV.fetch("OLC_IOS_DEVELOPMENT_TEAM")
+end
+
+def build_number
+  ENV["OLC_IOS_BUILD_NUMBER"].to_s.empty? ? Time.now.utc.strftime("%Y%m%d%H%M") : ENV.fetch("OLC_IOS_BUILD_NUMBER")
+end
+
+def build_output_dir
+  File.join(repo_root, "tools", "ios-testflight", "build")
+end
+
+def certificate_output_dir
+  ENV["OLC_IOS_CERTIFICATE_OUTPUT_DIR"].to_s.empty? ? File.join(build_output_dir, "certificates") : ENV.fetch("OLC_IOS_CERTIFICATE_OUTPUT_DIR")
+end
+
+def provisioning_output_dir
+  File.join(build_output_dir, "profiles")
+end
+
+def app_profile_name
+  ENV["OLC_IOS_APP_PROFILE_NAME"].to_s.empty? ? "OLC App Store" : ENV.fetch("OLC_IOS_APP_PROFILE_NAME")
+end
+
+def tunnel_profile_name
+  ENV["OLC_IOS_TUNNEL_PROFILE_NAME"].to_s.empty? ? "OLC Tunnel App Store" : ENV.fetch("OLC_IOS_TUNNEL_PROFILE_NAME")
+end
+
+def manual_signing?
+  ENV["OLC_IOS_SIGNING_STYLE"].to_s.downcase == "manual"
+end
+
+def apply_identifiers
+  sh("ruby", File.join(repo_root, "tools", "ios-testflight", "apply_identifiers.rb"))
+end
+
+def generate_profiles
+  script = File.join(ios_app_dir, "scripts", "generate-local-profiles.rb")
+  return unless File.file?(script)
+
+  Dir.chdir(ios_app_dir) do
+    sh("env", "RUBYOPT=--disable=gems", "ruby", script, "--allow-missing-wb")
+  end
+end
+
+def verify_builtin_profiles
+  required = ENV.fetch("OLC_REQUIRED_BUILTIN_PROFILES", "telemost,wb")
+                .split(",")
+                .map { |value| value.strip.downcase }
+                .reject(&:empty?)
+  return if required.empty?
+
+  path = File.join(ios_app_dir, "App", "BuiltInProfiles.local.json")
+  UI.user_error!("BuiltInProfiles.local.json is missing") unless File.file?(path)
+
+  profiles = JSON.parse(File.read(path))
+  ids = profiles.map { |profile| profile.fetch("id").to_s.downcase }
+  missing = required - ids
+  UI.user_error!("missing built-in profiles: #{missing.join(", ")}") unless missing.empty?
+end
+
+def generate_xcode_project
+  Dir.chdir(ios_app_dir) do
+    sh("xcodegen", "generate")
+  end
+end
+
+def prepare_ios_project
+  apply_identifiers
+  generate_profiles
+  verify_builtin_profiles
+  generate_xcode_project
+end
+
+def asc_api_key
+  key_id = ENV["ASC_KEY_ID"].to_s.strip
+  issuer_id = ENV["ASC_ISSUER_ID"].to_s.strip
+  key_path = ENV["ASC_KEY_PATH"].to_s.strip
+  UI.user_error!("ASC_KEY_ID is required") if key_id.empty?
+  UI.user_error!("ASC_ISSUER_ID is required") if issuer_id.empty?
+  UI.user_error!("ASC_KEY_PATH is required") if key_path.empty?
+  UI.user_error!("ASC_KEY_PATH does not point to a file") unless File.file?(key_path)
+
+  app_store_connect_api_key(
+    key_id: key_id,
+    issuer_id: issuer_id,
+    key_filepath: key_path,
+    duration: 1200,
+    in_house: false
+  )
+end
+
+def apple_id_username
+  username = ENV["OLC_APPLE_ID"].to_s.strip
+  UI.user_error!("OLC_APPLE_ID is required") if username.empty?
+  username
+end
+
+def apple_id_username_configured?
+  !ENV["OLC_APPLE_ID"].to_s.strip.empty?
+end
+
+def produce_cli(*args)
+  command = ["fastlane", "produce", *args, "-u", apple_id_username, "-b", team_id]
+  itc_team_id = ENV["OLC_IOS_ITC_TEAM_ID"].to_s.strip
+  command += ["-k", itc_team_id] unless itc_team_id.empty?
+  sh(Shellwords.join(command))
+end
+
+def portal_app_name
+  ENV["OLC_IOS_APPSTORE_NAME"].to_s.empty? ? "OLC" : ENV.fetch("OLC_IOS_APPSTORE_NAME")
+end
+
+def portal_sku
+  ENV["OLC_IOS_APPSTORE_SKU"].to_s.empty? ? "olc-private" : ENV.fetch("OLC_IOS_APPSTORE_SKU")
+end
+
+def portal_version
+  ENV["OLC_IOS_APP_VERSION"].to_s.empty? ? "0.1.0" : ENV.fetch("OLC_IOS_APP_VERSION")
+end
+
+def create_portal_identifier(identifier:, name:, sku:, skip_itc:)
+  args = [
+    "create",
+    "-a", identifier,
+    "-q", name,
+    "-y", sku,
+    "-z", portal_version,
+    "-j", "ios"
+  ]
+  args += ["-i", "true"] if skip_itc
+  produce_cli(*args)
+end
+
+def enable_portal_services(identifier)
+  produce_cli("enable_services", "-a", identifier, "--app-group", "--network-extension")
+end
+
+def ensure_portal_group
+  group_name = ENV["OLC_IOS_APP_GROUP_NAME"].to_s.empty? ? "OLC App Group" : ENV.fetch("OLC_IOS_APP_GROUP_NAME")
+  produce_cli("group", "-g", app_group_identifier, "-n", group_name)
+end
+
+def associate_portal_group(identifier)
+  produce_cli("associate_group", "-a", identifier, app_group_identifier)
+end
+
+def asc_token_text
+  Spaceship::ConnectAPI::Token.create(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    filepath: ENV.fetch("ASC_KEY_PATH"),
+    duration: 600,
+    in_house: false
+  ).text
+end
+
+def asc_request(method, path, params: {}, body: nil)
+  query = params.empty? ? "" : "?#{URI.encode_www_form(params)}"
+  url = "https://api.appstoreconnect.apple.com#{path}#{query}"
+  command = [
+    "curl",
+    "--http1.1",
+    "--retry", "5",
+    "--retry-all-errors",
+    "--retry-delay", "2",
+    "-sS",
+    "-w", "\n%{http_code}",
+    "-X", method,
+    "-H", "Authorization: Bearer #{asc_token_text}",
+    "-H", "Content-Type: application/json",
+    url
+  ]
+  stdin_data = body.nil? ? "" : JSON.generate(body)
+  command += ["--data-binary", "@-"] unless body.nil?
+  stdout, stderr, status = Open3.capture3(*command, stdin_data: stdin_data)
+  UI.user_error!("ASC API #{method} #{path} failed: #{stderr.lines.last.to_s.strip}") unless status.success?
+
+  response_body, status_code = stdout.rpartition("\n").values_at(0, 2)
+  code = status_code.to_i
+  if code >= 400
+    message = response_body.to_s.empty? ? stderr.lines.last.to_s.strip : response_body
+    UI.user_error!("ASC API #{method} #{path} returned HTTP #{code}: #{message}")
+  end
+
+  response_body.to_s.empty? ? {} : JSON.parse(response_body)
+end
+
+def asc_find_bundle_identifier(identifier)
+  response = asc_request("GET", "/v1/bundleIds", params: { "filter[identifier]" => identifier })
+  response.fetch("data").first
+end
+
+def asc_bundle_capabilities(bundle_id)
+  response = asc_request("GET", "/v1/bundleIds/#{bundle_id}/bundleIdCapabilities")
+  response.fetch("data")
+end
+
+def asc_ensure_capability(bundle_id, capability_type)
+  capabilities = asc_bundle_capabilities(bundle_id.fetch("id"))
+  return if capabilities.any? do |capability|
+    capability.dig("attributes", "capabilityType") == capability_type || capability.fetch("id", "").end_with?(capability_type)
+  end
+
+  asc_request(
+    "POST",
+    "/v1/bundleIdCapabilities",
+    body: {
+      data: {
+        type: "bundleIdCapabilities",
+        attributes: {
+          capabilityType: capability_type,
+          settings: []
+        },
+        relationships: {
+          bundleId: {
+            data: {
+              type: "bundleIds",
+              id: bundle_id.fetch("id")
+            }
+          }
+        }
+      }
+    }
+  )
+end
+
+def asc_create_bundle_identifier(identifier:, name:)
+  asc_request(
+    "POST",
+    "/v1/bundleIds",
+    body: {
+      data: {
+        type: "bundleIds",
+        attributes: {
+          name: name,
+          identifier: identifier,
+          platform: "IOS"
+        }
+      }
+    }
+  ).fetch("data")
+end
+
+def ensure_connect_bundle_identifier(identifier:, name:)
+  bundle_id = asc_find_bundle_identifier(identifier)
+  if bundle_id.nil?
+    UI.message("Creating Bundle ID #{identifier}")
+    bundle_id = asc_create_bundle_identifier(identifier: identifier, name: name)
+  else
+    UI.message("Bundle ID #{identifier} already exists")
+  end
+
+  asc_ensure_capability(bundle_id, "APP_GROUPS")
+  asc_ensure_capability(bundle_id, "NETWORK_EXTENSIONS")
+  bundle_id
+end
+
+def asc_find_app_record(identifier)
+  response = asc_request("GET", "/v1/apps", params: { "filter[bundleId]" => identifier })
+  response.fetch("data").first
+end
+
+def ensure_connect_app_record
+  app = asc_find_app_record(app_identifier)
+  if app.nil?
+    UI.message("Creating App Store Connect app record for #{app_identifier}")
+    begin
+      primary_locale = ENV["OLC_IOS_PRIMARY_LOCALE"].to_s.empty? ? "en-US" : ENV.fetch("OLC_IOS_PRIMARY_LOCALE")
+      asc_request(
+        "POST",
+        "/v1/apps",
+        body: {
+          data: {
+            type: "apps",
+            attributes: {
+              sku: portal_sku,
+              primaryLocale: primary_locale,
+              bundleId: app_identifier
+            },
+            relationships: {
+              appStoreVersions: {
+                data: [
+                  {
+                    type: "appStoreVersions",
+                    id: "${store-version-IOS}"
+                  }
+                ]
+              },
+              appInfos: {
+                data: [
+                  {
+                    type: "appInfos",
+                    id: "${new-appInfo-id}"
+                  }
+                ]
+              }
+            }
+          },
+          included: [
+            {
+              type: "appInfos",
+              id: "${new-appInfo-id}",
+              relationships: {
+                appInfoLocalizations: {
+                  data: [
+                    {
+                      type: "appInfoLocalizations",
+                      id: "${new-appInfoLocalization-id}"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              type: "appInfoLocalizations",
+              id: "${new-appInfoLocalization-id}",
+              attributes: {
+                locale: primary_locale,
+                name: portal_app_name
+              }
+            },
+            {
+              type: "appStoreVersions",
+              id: "${store-version-IOS}",
+              attributes: {
+                platform: "IOS",
+                versionString: portal_version
+              },
+              relationships: {
+                appStoreVersionLocalizations: {
+                  data: [
+                    {
+                      type: "appStoreVersionLocalizations",
+                      id: "${new-IOSVersionLocalization-id}"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              type: "appStoreVersionLocalizations",
+              id: "${new-IOSVersionLocalization-id}",
+              attributes: {
+                locale: primary_locale
+              }
+            }
+          ]
+        }
+      )
+    rescue StandardError => e
+      raise unless e.message.include?("does not allow 'CREATE'") || e.message.include?("FORBIDDEN_ERROR")
+
+      UI.important("ASC API key cannot create the App Store Connect app record; set OLC_APPLE_ID or create it manually before beta upload")
+    end
+  else
+    UI.message("App Store Connect app record for #{app_identifier} already exists")
+  end
+end
+
+def prepare_connect_portal
+  asc_api_key
+  ensure_connect_bundle_identifier(identifier: app_identifier, name: portal_app_name)
+  ensure_connect_bundle_identifier(identifier: tunnel_identifier, name: "#{portal_app_name} Tunnel")
+  ensure_connect_app_record
+end
+
+def ensure_distribution_certificate
+  FileUtils.mkdir_p(certificate_output_dir)
+  cert(
+    api_key: asc_api_key,
+    team_id: team_id,
+    development: false,
+    output_path: certificate_output_dir,
+    generate_apple_certs: true
+  )
+end
+
+def distribution_certificate_id
+  explicit = ENV["OLC_IOS_CERTIFICATE_ID"].to_s.strip
+  return explicit unless explicit.empty?
+
+  local_certificate = Dir.glob(File.join(certificate_output_dir, "*.cer")).map { |path| File.basename(path, ".cer") }.sort.last
+  return local_certificate unless local_certificate.to_s.empty?
+
+  response = asc_request("GET", "/v1/certificates", params: { "filter[certificateType]" => "IOS_DISTRIBUTION" })
+  certificate = response.fetch("data").find do |item|
+    expiration = item.dig("attributes", "expirationDate").to_s
+    expiration.empty? || Time.parse(expiration) > Time.now
+  end
+  UI.user_error!("missing Apple Distribution certificate id") if certificate.nil?
+  certificate.fetch("id")
+end
+
+def asc_profiles(bundle_id:, profile_name:)
+  response = asc_request(
+    "GET",
+    "/v1/profiles",
+    params: {
+      "filter[profileType]" => "IOS_APP_STORE",
+      "filter[name]" => profile_name,
+      "include" => "bundleId,certificates"
+    }
+  )
+  response.fetch("data").select do |profile|
+    profile.dig("relationships", "bundleId", "data", "id") == bundle_id.fetch("id")
+  end
+end
+
+def asc_find_profile(bundle_id:, profile_name:)
+  asc_profiles(bundle_id: bundle_id, profile_name: profile_name).find do |profile|
+    profile.dig("attributes", "profileState") == "ACTIVE"
+  end
+end
+
+def asc_delete_profile(profile)
+  asc_request("DELETE", "/v1/profiles/#{profile.fetch("id")}")
+end
+
+def asc_create_profile(bundle_id:, profile_name:)
+  asc_request(
+    "POST",
+    "/v1/profiles",
+    body: {
+      data: {
+        type: "profiles",
+        attributes: {
+          name: profile_name,
+          profileType: "IOS_APP_STORE"
+        },
+        relationships: {
+          bundleId: {
+            data: {
+              type: "bundleIds",
+              id: bundle_id.fetch("id")
+            }
+          },
+          certificates: {
+            data: [
+              {
+                type: "certificates",
+                id: distribution_certificate_id
+              }
+            ]
+          },
+          devices: {
+            data: []
+          }
+        }
+      }
+    }
+  ).fetch("data")
+end
+
+def install_asc_profile(profile, filename)
+  content = profile.dig("attributes", "profileContent").to_s
+  UI.user_error!("ASC profile response is missing profileContent") if content.empty?
+
+  profile_bytes = Base64.decode64(content)
+  uuid = profile.dig("attributes", "uuid").to_s
+  UI.user_error!("ASC profile response is missing uuid") if uuid.empty?
+
+  FileUtils.mkdir_p(provisioning_output_dir)
+  output_path = File.join(provisioning_output_dir, filename)
+  File.binwrite(output_path, profile_bytes)
+
+  FileUtils.mkdir_p(mobileprovision_dir)
+  FileUtils.cp(output_path, File.join(mobileprovision_dir, "#{uuid}.mobileprovision"))
+  output_path
+end
+
+def fetch_app_store_profile_via_asc(identifier:, profile_name:, filename:)
+  bundle_id = asc_find_bundle_identifier(identifier)
+  UI.user_error!("missing Bundle ID for #{identifier}; run portal_prepare") if bundle_id.nil?
+
+  if ENV["OLC_IOS_FORCE_PROFILES"] == "1"
+    asc_profiles(bundle_id: bundle_id, profile_name: profile_name).each { |profile| asc_delete_profile(profile) }
+    profile = nil
+  else
+    profile = asc_find_profile(bundle_id: bundle_id, profile_name: profile_name)
+  end
+  profile = asc_create_profile(bundle_id: bundle_id, profile_name: profile_name) if profile.nil?
+  install_asc_profile(profile, filename)
+end
+
+def fetch_app_store_profile(identifier:, profile_name:, filename:)
+  if ENV["OLC_IOS_USE_FASTLANE_SIGH"] == "1"
+    FileUtils.mkdir_p(provisioning_output_dir)
+    options = {
+      api_key: asc_api_key,
+      team_id: team_id,
+      app_identifier: identifier,
+      provisioning_name: profile_name,
+      filename: filename,
+      output_path: provisioning_output_dir,
+      skip_certificate_verification: ENV["OLC_IOS_SKIP_CERTIFICATE_VERIFICATION"] == "1"
+    }
+    options[:force] = true if ENV["OLC_IOS_FORCE_PROFILES"] == "1"
+    options[:readonly] = true if ENV["OLC_IOS_PROFILES_READONLY"] == "1"
+    get_provisioning_profile(options)
+  else
+    asc_api_key
+    fetch_app_store_profile_via_asc(identifier: identifier, profile_name: profile_name, filename: filename)
+  end
+end
+
+def fetch_app_store_profiles
+  fetch_app_store_profile(
+    identifier: app_identifier,
+    profile_name: app_profile_name,
+    filename: "OLC_AppStore.mobileprovision"
+  )
+  fetch_app_store_profile(
+    identifier: tunnel_identifier,
+    profile_name: tunnel_profile_name,
+    filename: "OLC_Tunnel_AppStore.mobileprovision"
+  )
+end
+
+def configure_manual_signing
+  update_code_signing_settings(
+    path: project_path,
+    use_automatic_signing: false,
+    team_id: team_id,
+    targets: ["OlcClientiOS"],
+    code_sign_identity: "Apple Distribution",
+    profile_name: app_profile_name,
+    bundle_identifier: app_identifier
+  )
+  update_code_signing_settings(
+    path: project_path,
+    use_automatic_signing: false,
+    team_id: team_id,
+    targets: ["OlcTunnel"],
+    code_sign_identity: "Apple Distribution",
+    profile_name: tunnel_profile_name,
+    bundle_identifier: tunnel_identifier
+  )
+end
+
+def installed_signing_identities
+  sh("security", "find-identity", "-v", "-p", "codesigning", log: false)
+rescue StandardError => e
+  e.message
+end
+
+def mobileprovision_dir
+  File.expand_path("~/Library/MobileDevice/Provisioning Profiles")
+end
+
+def provisioning_profile_plists
+  Dir.glob(File.join(mobileprovision_dir, "*.mobileprovision")).filter_map do |path|
+    xml = sh("security", "cms", "-D", "-i", path, log: false)
+    Plist.parse_xml(xml)
+  rescue StandardError
+    nil
+  end
+end
+
+def profile_bundle_identifier(profile)
+  application_identifier = profile.dig("Entitlements", "application-identifier").to_s
+  application_identifier.split(".", 2).last
+end
+
+def profile_has_required_entitlements?(profile)
+  entitlements = profile.fetch("Entitlements", {})
+  groups = Array(entitlements["com.apple.security.application-groups"])
+  network_extensions = Array(entitlements["com.apple.developer.networking.networkextension"])
+  groups.include?(app_group_identifier) && network_extensions.include?("packet-tunnel-provider")
+end
+
+def installed_profile_for(identifier)
+  provisioning_profile_plists.find { |profile| profile_bundle_identifier(profile) == identifier }
+end
+
+def command_available?(name)
+  system("command -v #{Shellwords.escape(name)} >/dev/null 2>&1")
+end
+
+def assert_no_legacy_ios_name
+  token = ["uni", "te"].join
+  files = Dir.glob(File.join(ios_app_dir, "{App,Tunnel,scripts}/**/*")) + [File.join(ios_app_dir, "project.yml")]
+  offenders = files.select do |path|
+    File.file?(path) && File.read(path, mode: "rb").include?(token)
+  end
+  UI.user_error!("legacy product name remains in iOS app files") unless offenders.empty?
+end
+
+def run_doctor
+  prepare_ios_project
+  assert_no_legacy_ios_name
+
+  errors = []
+  %w[fastlane xcodebuild xcodegen security].each do |command|
+    errors << "missing command: #{command}" unless command_available?(command)
+  end
+
+  if [ENV["ASC_KEY_ID"], ENV["ASC_ISSUER_ID"], ENV["ASC_KEY_PATH"]].any? { |value| value.to_s.strip.empty? }
+    errors << "missing App Store Connect API key env"
+  elsif !File.file?(ENV.fetch("ASC_KEY_PATH"))
+    errors << "ASC_KEY_PATH does not point to a file"
+  end
+
+  identities = installed_signing_identities
+  unless identities.include?("Apple Distribution") || identities.include?("iPhone Distribution")
+    errors << "missing local Apple Distribution signing identity"
+  end
+
+  {
+    app_identifier => app_profile_name,
+    tunnel_identifier => tunnel_profile_name
+  }.each do |identifier, expected_name|
+    profile = installed_profile_for(identifier)
+    if profile.nil?
+      errors << "missing installed App Store provisioning profile for #{identifier}"
+    elsif !profile_has_required_entitlements?(profile)
+      errors << "installed provisioning profile for #{identifier} lacks app group or network extension entitlement"
+    elsif profile["Name"] != expected_name
+      UI.important("installed profile for #{identifier} is named #{profile["Name"].inspect}, expected #{expected_name.inspect}")
+    end
+  end
+
+  UI.message("app bundle id: #{app_identifier}")
+  UI.message("tunnel bundle id: #{tunnel_identifier}")
+  UI.message("app group: #{app_group_identifier}")
+  UI.message("signing style: #{manual_signing? ? "manual" : "automatic"}")
+
+  UI.user_error!("TestFlight preflight failed:\n- #{errors.join("\n- ")}") unless errors.empty?
+end
+
+def archive_ipa
+  FileUtils.mkdir_p(build_output_dir)
+  export_options = {
+    method: "app-store",
+    signingStyle: manual_signing? ? "manual" : "automatic",
+    teamID: team_id
+  }
+  if manual_signing?
+    export_options[:provisioningProfiles] = {
+      app_identifier => app_profile_name,
+      tunnel_identifier => tunnel_profile_name
+    }
+  end
+
+  build_options = {
+    project: project_path,
+    scheme: scheme_name,
+    clean: true,
+    destination: "generic/platform=iOS",
+    archive_path: File.join(build_output_dir, "OLC.xcarchive"),
+    output_directory: build_output_dir,
+    output_name: "OLC.ipa",
+    export_method: "app-store",
+    xcargs: "DEVELOPMENT_TEAM=#{team_id} CURRENT_PROJECT_VERSION=#{build_number}",
+    export_options: export_options
+  }
+  unless manual_signing?
+    build_options[:xcargs] = "-allowProvisioningUpdates #{build_options.fetch(:xcargs)}"
+    build_options[:export_xcargs] = "-allowProvisioningUpdates"
+  end
+
+  build_app(build_options)
+end
+
+platform :ios do
+  desc "Apply Apple identifiers to the local iOS app"
+  lane :apply_ids do
+    apply_identifiers
+  end
+
+  desc "Check local TestFlight readiness without uploading"
+  lane :doctor do
+    run_doctor
+  end
+
+  desc "Regenerate project and run unsigned generic iOS build"
+  lane :dry_run do
+    prepare_ios_project
+    sh(
+      "xcodebuild",
+      "-project", project_path,
+      "-scheme", scheme_name,
+      "-destination", "generic/platform=iOS",
+      "CODE_SIGNING_ALLOWED=NO",
+      "CODE_SIGNING_REQUIRED=NO",
+      "CODE_SIGN_IDENTITY=",
+      "build"
+    )
+  end
+
+  desc "Create/update App Store Connect and Developer Portal app identifiers"
+  lane :portal_prepare do
+    apply_identifiers
+    prepare_connect_portal
+
+    if apple_id_username_configured?
+      create_portal_identifier(
+        identifier: app_identifier,
+        name: portal_app_name,
+        sku: portal_sku,
+        skip_itc: false
+      )
+      create_portal_identifier(
+        identifier: tunnel_identifier,
+        name: "#{portal_app_name} Tunnel",
+        sku: "#{portal_sku}-tunnel",
+        skip_itc: true
+      )
+      enable_portal_services(app_identifier)
+      enable_portal_services(tunnel_identifier)
+      ensure_portal_group
+      associate_portal_group(app_identifier)
+      associate_portal_group(tunnel_identifier)
+    else
+      UI.important("OLC_APPLE_ID is not set; skipped legacy App Group create/associate step")
+    end
+  end
+
+  desc "Ensure an Apple Distribution certificate is installed locally"
+  lane :certificates do
+    ensure_distribution_certificate
+  end
+
+  desc "Create/download App Store provisioning profiles for both iOS targets"
+  lane :profiles do
+    fetch_app_store_profiles
+  end
+
+  desc "Build App Store archive and IPA"
+  lane :archive do
+    prepare_ios_project
+    if manual_signing?
+      fetch_app_store_profiles
+      configure_manual_signing
+    end
+    archive_ipa
+  end
+
+  desc "Build and upload an internal TestFlight build"
+  lane :beta do
+    prepare_ios_project
+    if manual_signing?
+      fetch_app_store_profiles
+      configure_manual_signing
+    end
+    ipa_path = archive_ipa
+    upload_options = {
+      api_key: asc_api_key,
+      app_identifier: app_identifier,
+      ipa: ipa_path,
+      skip_waiting_for_build_processing: true,
+      changelog: ENV["OLC_IOS_CHANGELOG"].to_s.empty? ? "Private field build" : ENV.fetch("OLC_IOS_CHANGELOG")
+    }
+    app_store_id = ENV["OLC_IOS_APPSTORE_APP_ID"].to_s.strip
+    upload_options[:apple_id] = app_store_id unless app_store_id.empty?
+    upload_to_testflight(upload_options)
+  end
+end

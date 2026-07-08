@@ -10,6 +10,7 @@ paths = [
   '''(^|/)[.]git/''',
   '''(^|/)[.]worktrees/''',
   '''^build/''',
+  '''^tools/ios-testflight/build/''',
 ]
 regexes = [
   '''00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff''',
