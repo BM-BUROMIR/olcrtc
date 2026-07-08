@@ -117,6 +117,10 @@ var (
 	// ErrSOCKSAuthRequired indicates that a non-loopback SOCKS listener requires authentication.
 	ErrSOCKSAuthRequired = errors.New(
 		"socks auth required when binding outside loopback (set socks.user and socks.pass)")
+	// ErrSOCKSBlockPortInvalid indicates that a SOCKS block port is outside the TCP/UDP port range.
+	ErrSOCKSBlockPortInvalid = errors.New("invalid socks block port (set socks.block_ports to 1..65535)")
+	// ErrSOCKSBlockCIDRInvalid indicates that a SOCKS block CIDR is not parseable.
+	ErrSOCKSBlockCIDRInvalid = errors.New("invalid socks block cidr (set socks.block_cidrs to CIDR values)")
 
 	// ErrLivenessIntervalInvalid indicates that liveness.interval is not a positive duration.
 	ErrLivenessIntervalInvalid = errors.New(
@@ -187,6 +191,9 @@ type Config struct {
 	SOCKSPort             int
 	SOCKSUser             string
 	SOCKSPass             string
+	SOCKSBlockPorts       []int
+	SOCKSBlockHosts       []string
+	SOCKSBlockCIDRs       []string
 	DNSServer             string
 	SOCKSProxyAddr        string
 	SOCKSProxyPort        int
@@ -349,6 +356,9 @@ func Validate(cfg Config) error {
 	if err := validateTrafficConfig(cfg); err != nil {
 		return err
 	}
+	if err := validateSOCKSBlockPolicy(cfg); err != nil {
+		return err
+	}
 	return validateModeConfig(cfg)
 }
 
@@ -474,6 +484,23 @@ func validateModeConfig(cfg Config) error {
 	}
 	if !isLoopbackListenHost(cfg.SOCKSHost) && (cfg.SOCKSUser == "" || cfg.SOCKSPass == "") {
 		return ErrSOCKSAuthRequired
+	}
+	return nil
+}
+
+func validateSOCKSBlockPolicy(cfg Config) error {
+	for _, port := range cfg.SOCKSBlockPorts {
+		if port < 1 || port > 65535 {
+			return fmt.Errorf("%w: %d", ErrSOCKSBlockPortInvalid, port)
+		}
+	}
+	for _, cidr := range cfg.SOCKSBlockCIDRs {
+		if cidr == "" {
+			continue
+		}
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return fmt.Errorf("%w: %s", ErrSOCKSBlockCIDRInvalid, cidr)
+		}
 	}
 	return nil
 }
@@ -679,15 +706,20 @@ func runOnce(
 		return nil
 	case modeCNC:
 		if err := client.Run(ctx, client.Config{
-			Transport:        cfg.Transport,
-			Carrier:          cfg.Auth,
-			RoomURL:          roomURL,
-			ChannelID:        cfg.ChannelID,
-			KeyHex:           cfg.KeyHex,
-			LocalAddr:        fmt.Sprintf("%s:%d", cfg.SOCKSHost, cfg.SOCKSPort),
-			DNSServer:        cfg.DNSServer,
-			SOCKSUser:        cfg.SOCKSUser,
-			SOCKSPass:        cfg.SOCKSPass,
+			Transport: cfg.Transport,
+			Carrier:   cfg.Auth,
+			RoomURL:   roomURL,
+			ChannelID: cfg.ChannelID,
+			KeyHex:    cfg.KeyHex,
+			LocalAddr: fmt.Sprintf("%s:%d", cfg.SOCKSHost, cfg.SOCKSPort),
+			DNSServer: cfg.DNSServer,
+			SOCKSUser: cfg.SOCKSUser,
+			SOCKSPass: cfg.SOCKSPass,
+			SOCKSBlockPolicy: client.SOCKSBlockPolicy{
+				Ports: cfg.SOCKSBlockPorts,
+				Hosts: cfg.SOCKSBlockHosts,
+				CIDRs: cfg.SOCKSBlockCIDRs,
+			},
 			TransportOptions: opts,
 			Engine:           cfg.Engine,
 			URL:              cfg.URL,

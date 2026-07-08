@@ -3,6 +3,7 @@ package session
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -70,7 +71,7 @@ func TestApplyTransportDefaults(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := ApplyTransportDefaults(tt.in)
-			if got != tt.want {
+			if !reflect.DeepEqual(got, tt.want) {
 				t.Fatalf("ApplyTransportDefaults() = %+v, want %+v", got, tt.want)
 			}
 		})
@@ -90,7 +91,7 @@ func TestApplyLivenessDefaults(t *testing.T) {
 	}
 
 	explicit := Config{LivenessInterval: "1s", LivenessTimeout: "500ms", LivenessFailures: 9}
-	if got := ApplyLivenessDefaults(explicit); got != explicit {
+	if got := ApplyLivenessDefaults(explicit); !reflect.DeepEqual(got, explicit) {
 		t.Fatalf("ApplyLivenessDefaults() = %+v, want %+v", got, explicit)
 	}
 }
@@ -437,6 +438,24 @@ func TestValidate(t *testing.T) {
 				cfg.SOCKSPort = 1080
 				return cfg
 			}(),
+		},
+		{
+			name: "socks block rejects invalid port",
+			cfg: func() Config {
+				cfg := base
+				cfg.SOCKSBlockPorts = []int{0}
+				return cfg
+			}(),
+			want: ErrSOCKSBlockPortInvalid,
+		},
+		{
+			name: "socks block rejects invalid cidr",
+			cfg: func() Config {
+				cfg := base
+				cfg.SOCKSBlockCIDRs = []string{"not-a-cidr"}
+				return cfg
+			}(),
+			want: ErrSOCKSBlockCIDRInvalid,
 		},
 		{
 			name: "liveness rejects bad interval",

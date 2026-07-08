@@ -102,14 +102,17 @@ type Net struct {
 
 // SOCKS bundles SOCKS5 listener and outbound-proxy settings.
 type SOCKS struct {
-	Host      string `yaml:"host"`
-	Port      int    `yaml:"port"`
-	User      string `yaml:"user"`
-	Pass      string `yaml:"pass"`
-	ProxyAddr string `yaml:"proxy_addr"`
-	ProxyPort int    `yaml:"proxy_port"`
-	ProxyUser string `yaml:"proxy_user"`
-	ProxyPass string `yaml:"proxy_pass"`
+	Host       string   `yaml:"host"`
+	Port       int      `yaml:"port"`
+	User       string   `yaml:"user"`
+	Pass       string   `yaml:"pass"`
+	BlockPorts []int    `yaml:"block_ports"`
+	BlockHosts []string `yaml:"block_hosts"`
+	BlockCIDRs []string `yaml:"block_cidrs"`
+	ProxyAddr  string   `yaml:"proxy_addr"`
+	ProxyPort  int      `yaml:"proxy_port"`
+	ProxyUser  string   `yaml:"proxy_user"`
+	ProxyPass  string   `yaml:"proxy_pass"`
 }
 
 // Engine selects a direct SFU connection when Auth.Provider is "none".
@@ -262,6 +265,9 @@ func Apply(dst session.Config, f File) session.Config {
 	dst.SOCKSPort = pickInt(dst.SOCKSPort, f.SOCKS.Port)
 	dst.SOCKSUser = pickString(dst.SOCKSUser, f.SOCKS.User)
 	dst.SOCKSPass = pickString(dst.SOCKSPass, f.SOCKS.Pass)
+	dst.SOCKSBlockPorts = pickInts(dst.SOCKSBlockPorts, f.SOCKS.BlockPorts)
+	dst.SOCKSBlockHosts = pickStrings(dst.SOCKSBlockHosts, f.SOCKS.BlockHosts)
+	dst.SOCKSBlockCIDRs = pickStrings(dst.SOCKSBlockCIDRs, f.SOCKS.BlockCIDRs)
 	dst.DNSServer = pickString(dst.DNSServer, f.Net.DNS)
 	dst.SOCKSProxyAddr = pickString(dst.SOCKSProxyAddr, f.SOCKS.ProxyAddr)
 	dst.SOCKSProxyPort = pickInt(dst.SOCKSProxyPort, f.SOCKS.ProxyPort)
@@ -310,6 +316,9 @@ func ApplyProfile(base session.Config, p Profile) session.Config {
 	dst.SOCKSPort = overlayInt(dst.SOCKSPort, p.SOCKS.Port)
 	dst.SOCKSUser = overlayString(dst.SOCKSUser, p.SOCKS.User)
 	dst.SOCKSPass = overlayString(dst.SOCKSPass, p.SOCKS.Pass)
+	dst.SOCKSBlockPorts = overlayInts(dst.SOCKSBlockPorts, p.SOCKS.BlockPorts)
+	dst.SOCKSBlockHosts = overlayStrings(dst.SOCKSBlockHosts, p.SOCKS.BlockHosts)
+	dst.SOCKSBlockCIDRs = overlayStrings(dst.SOCKSBlockCIDRs, p.SOCKS.BlockCIDRs)
 	dst.DNSServer = overlayString(dst.DNSServer, p.Net.DNS)
 	dst.SOCKSProxyAddr = overlayString(dst.SOCKSProxyAddr, p.SOCKS.ProxyAddr)
 	dst.SOCKSProxyPort = overlayInt(dst.SOCKSProxyPort, p.SOCKS.ProxyPort)
@@ -355,6 +364,20 @@ func pickInt(cli, yamlVal int) int {
 	return yamlVal
 }
 
+func pickInts(cli, yamlVal []int) []int {
+	if len(cli) > 0 {
+		return cloneInts(cli)
+	}
+	return cloneInts(yamlVal)
+}
+
+func pickStrings(cli, yamlVal []string) []string {
+	if len(cli) > 0 {
+		return cloneStrings(cli)
+	}
+	return cloneStrings(yamlVal)
+}
+
 func overlayString(base, override string) string {
 	if override != "" {
 		return override
@@ -367,4 +390,36 @@ func overlayInt(base, override int) int {
 		return override
 	}
 	return base
+}
+
+func overlayInts(base, override []int) []int {
+	if len(override) > 0 {
+		return cloneInts(override)
+	}
+	return cloneInts(base)
+}
+
+func overlayStrings(base, override []string) []string {
+	if len(override) > 0 {
+		return cloneStrings(override)
+	}
+	return cloneStrings(base)
+}
+
+func cloneInts(values []int) []int {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]int, len(values))
+	copy(out, values)
+	return out
+}
+
+func cloneStrings(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, len(values))
+	copy(out, values)
+	return out
 }

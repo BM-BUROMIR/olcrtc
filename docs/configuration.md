@@ -60,6 +60,7 @@ Ready-made examples:
 | `net.dns` | DNS resolver in `host:port` form |
 | `socks.host` / `socks.port` | local SOCKS5 listener in `mode: cnc` |
 | `socks.user` / `socks.pass` | optional auth for incoming SOCKS5 connections |
+| `socks.block_ports` / `socks.block_hosts` / `socks.block_cidrs` | local SOCKS5 ingress deny policy before tunnel stream creation |
 | `socks.proxy_addr` / `socks.proxy_port` | outbound SOCKS5 proxy on the server side |
 | `socks.proxy_user` / `socks.proxy_pass` | optional auth for the upstream proxy (RFC 1929) |
 | `engine.name` / `engine.url` / `engine.token` | direct engine mode, only when `auth.provider: none` |

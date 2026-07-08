@@ -60,6 +60,7 @@ olcrtc /etc/olcrtc/client.yaml
 | `net.dns` | DNS resolver в формате `host:port` |
 | `socks.host` / `socks.port` | локальный SOCKS5 listener в `mode: cnc` |
 | `socks.user` / `socks.pass` | необязательная auth для входящих SOCKS5-подключений |
+| `socks.block_ports` / `socks.block_hosts` / `socks.block_cidrs` | локальная deny-policy на SOCKS5 ingress до создания tunnel stream |
 | `socks.proxy_addr` / `socks.proxy_port` | исходящий SOCKS5-прокси на серверной стороне |
 | `socks.proxy_user` / `socks.proxy_pass` | необязательная auth для upstream-прокси (RFC 1929) |
 | `engine.name` / `engine.url` / `engine.token` | прямой engine-режим, только при `auth.provider: none` |

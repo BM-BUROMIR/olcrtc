@@ -369,12 +369,117 @@ func TestSocks5RequestReadPortError(t *testing.T) {
 	}
 }
 
+func TestSOCKSBlockPolicy(t *testing.T) {
+	policy, err := newSOCKSBlockPolicy(SOCKSBlockPolicy{
+		Ports: []int{993},
+		Hosts: []string{"*.apple.com", "example.net"},
+		CIDRs: []string{"17.0.0.0/8"},
+	})
+	if err != nil {
+		t.Fatalf("newSOCKSBlockPolicy() error = %v", err)
+	}
+
+	tests := []struct {
+		name string
+		host string
+		port int
+		want bool
+	}{
+		{name: "port", host: "mail.example.com", port: 993, want: true},
+		{name: "wildcard root", host: "apple.com", port: 443, want: true},
+		{name: "wildcard child", host: "Push.Apple.com.", port: 443, want: true},
+		{name: "exact host", host: "example.net", port: 443, want: true},
+		{name: "cidr", host: "17.1.2.3", port: 443, want: true},
+		{name: "allowed", host: "example.com", port: 443, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := policy.blocks(tt.host, tt.port); got != tt.want {
+				t.Fatalf("blocks(%q, %d) = %v, want %v", tt.host, tt.port, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestSOCKSBlockPolicyRejectsInvalidRules(t *testing.T) {
+	if _, err := newSOCKSBlockPolicy(SOCKSBlockPolicy{Ports: []int{65536}}); err == nil {
+		t.Fatal("newSOCKSBlockPolicy() unexpectedly accepted invalid port")
+	}
+	if _, err := newSOCKSBlockPolicy(SOCKSBlockPolicy{CIDRs: []string{"bad"}}); err == nil {
+		t.Fatal("newSOCKSBlockPolicy() unexpectedly accepted invalid cidr")
+	}
+}
+
+func TestHandleSocks5BlocksTargetBeforeTunnel(t *testing.T) {
+	policy, err := newSOCKSBlockPolicy(SOCKSBlockPolicy{Hosts: []string{"blocked.example"}})
+	if err != nil {
+		t.Fatalf("newSOCKSBlockPolicy() error = %v", err)
+	}
+	c := &Client{
+		socksPolicy:  policy,
+		sessionReady: make(chan struct{}),
+	}
+	server, clientConn := net.Pipe()
+	defer func() {
+		_ = server.Close()
+		_ = clientConn.Close()
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.handleSocks5(context.Background(), server)
+	}()
+
+	if _, err := clientConn.Write([]byte{5, 1, 0}); err != nil {
+		t.Fatalf("write greeting: %v", err)
+	}
+	method := make([]byte, 2)
+	if _, err := io.ReadFull(clientConn, method); err != nil {
+		t.Fatalf("read method: %v", err)
+	}
+	if !bytes.Equal(method, []byte{5, 0}) {
+		t.Fatalf("method = %v, want [5 0]", method)
+	}
+
+	writeSOCKSConnectDomain(t, clientConn, "blocked.example", 443)
+	reply := make([]byte, 10)
+	if _, err := io.ReadFull(clientConn, reply); err != nil {
+		t.Fatalf("read reply: %v", err)
+	}
+	if !bytes.Equal(reply, replyConnectionNotAllowed()) {
+		t.Fatalf("reply = %v, want %v", reply, replyConnectionNotAllowed())
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("handleSocks5 did not return after blocking target")
+	}
+}
+
 func TestReplyBuffers(t *testing.T) {
 	if !bytes.Equal(replySuccess(), []byte{5, 0, 0, 1, 0, 0, 0, 0, 0, 0}) {
 		t.Fatalf("replySuccess() = %v", replySuccess())
 	}
 	if !bytes.Equal(replyHostUnreachable(), []byte{5, 4, 0, 1, 0, 0, 0, 0, 0, 0}) {
 		t.Fatalf("replyHostUnreachable() = %v", replyHostUnreachable())
+	}
+	if !bytes.Equal(replyConnectionNotAllowed(), []byte{5, 2, 0, 1, 0, 0, 0, 0, 0, 0}) {
+		t.Fatalf("replyConnectionNotAllowed() = %v", replyConnectionNotAllowed())
+	}
+}
+
+func writeSOCKSConnectDomain(t *testing.T, conn net.Conn, host string, port uint16) {
+	t.Helper()
+	req := make([]byte, 0, 7+len(host))
+	req = append(req, 5, 1, 0, 3, byte(len(host)))
+	req = append(req, host...)
+	portBuf := make([]byte, 2)
+	binary.BigEndian.PutUint16(portBuf, port)
+	req = append(req, portBuf...)
+	if _, err := conn.Write(req); err != nil {
+		t.Fatalf("write socks connect: %v", err)
 	}
 }
 

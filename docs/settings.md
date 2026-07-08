@@ -130,12 +130,17 @@ If it is set, username/password auth per RFC 1929 is used (`proxy_pass` is optio
 | `socks.port` | Which port to start SOCKS5 on | `1080` |
 | `socks.user` | Login for incoming SOCKS5 connections (optional) | - |
 | `socks.pass` | Password for incoming SOCKS5 connections (optional) | - |
+| `socks.block_ports` | Destination ports to reject before tunneling | - |
+| `socks.block_hosts` | Destination host rules to reject; exact names and `*.example.com` wildcards are supported | - |
+| `socks.block_cidrs` | Destination IP CIDRs to reject before tunneling | - |
 
 If `socks.user` is not set, authentication is disabled (any local client may connect).  
 If it is set, the client accepts only connections with the correct login and password (RFC 1929).
 
 If `socks.host` is not loopback (`127.0.0.1`, `::1`, `localhost`), `socks.user` and `socks.pass` are required.
 This protects against accidentally opening a SOCKS5 proxy on the local network or the internet.
+
+`socks.block_*` is enforced locally at the SOCKS5 ingress. Rejected destinations do not open tunnel streams.
 
 ---
 
