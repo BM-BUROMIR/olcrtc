@@ -90,6 +90,11 @@ struct BootstrapCache {
     func save(_ envelope: BootstrapEnvelope) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let data = try BootstrapEnvelope.encoder().encode(envelope)
-        try data.write(to: try file(profileID: envelope.profile_id), options: [.atomic, .completeFileProtection])
+        #if os(iOS)
+        let options: Data.WritingOptions = [.atomic, .completeFileProtection]
+        #else
+        let options: Data.WritingOptions = .atomic
+        #endif
+        try data.write(to: try file(profileID: envelope.profile_id), options: options)
     }
 }
