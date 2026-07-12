@@ -45,6 +45,7 @@ fi
 
 if [ -z "${OLC_IOS_APP_DIR:-}" ]; then
   for candidate in \
+    "$repo_root/apps/ios/OlcClientiOS" \
     "$repo_root/../client/ios/OlcClientiOS" \
     "$repo_root/../../../client/ios/OlcClientiOS"; do
     if [ -d "$candidate" ]; then

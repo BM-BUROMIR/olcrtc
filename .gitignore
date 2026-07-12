@@ -55,6 +55,7 @@ Module.symvers
 Mkfile.old
 dkms.conf
 __pycache__
+*.pyc
 
 # debug information files
 *.dwo
@@ -234,6 +235,22 @@ vite.config.ts.timestamp-*
 coverage.*
 *.coverprofile
 profile.cov
+
+# Private/generated mobile and control-plane state
+.worktrees/
+apps/ios/OlcClientiOS/App/BuiltInProfiles.local.json
+apps/ios/OlcClientiOS/App/ManagedProfiles.local.json
+apps/ios/OlcClientiOS/build/
+apps/ios/OlcClientiOS/DerivedData/
+apps/ios/OlcClientiOS/**/*.xcarchive
+apps/ios/OlcClientiOS/**/*.ipa
+apps/ios/OlcClientiOS/**/*.mobileprovision
+apps/ios/OlcClientiOS/**/*.bak
+apps/ios/OlcClientiOS/**/xcuserdata/
+control-plane/rooms.json
+control-plane/devices.json
+control-plane/state/
+control-plane/transactions/
 
 # Dependency directories (remove the comment below to include it)
 # vendor/

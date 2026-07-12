@@ -1,0 +1,550 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		06A189E9E0F34827C94D01D3 /* BuiltInProfiles.local.json in Resources */ = {isa = PBXBuildFile; fileRef = 26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */; };
+		42FEE806D7231B30FC78D94A /* OlcApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 543F0BA2D4AC63B3C48EE17C /* OlcApp.swift */; };
+		4D58A7BA3E410A696F8588D6 /* Tun2SocksKit in Frameworks */ = {isa = PBXBuildFile; productRef = F1B98BCCA30EC2559691FB30 /* Tun2SocksKit */; };
+		574F7999EE3F59194D7CD12D /* BuiltInProfiles.local.json.pre-freshroom.bak in Resources */ = {isa = PBXBuildFile; fileRef = CD2502F9FF02935C8B7F6D7A /* BuiltInProfiles.local.json.pre-freshroom.bak */; };
+		5B2E55104D153F89189D76DC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */; };
+		7DD2A2F4F1D2477C67DA203C /* OlcMobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7703B6A4658B0600D48485E8 /* OlcMobile.xcframework */; };
+		A24917520669A7994816EF2B /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D97A84452A41E3D7E2DDD57 /* ProfileStore.swift */; };
+		A85D0B14D2F5487CDC34B664 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7589F7854DEBD027356A56 /* PacketTunnelProvider.swift */; };
+		AC6155AA53877769927EEEF4 /* OlcMobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7703B6A4658B0600D48485E8 /* OlcMobile.xcframework */; };
+		AEF550C4F0252BE4E30DA96B /* OlcTunnel.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 805713DA9C02E019EC68262A /* OlcTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		02E7C10EC81C024E15D47685 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 7224E1015564B30456BF5363 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 01D4280697C7802822FD3F94;
+			remoteInfo = OlcTunnel;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		74599D9A161A5C3030A11724 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AEF550C4F0252BE4E30DA96B /* OlcTunnel.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		117E9305E51B37EC77BEF651 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		1D97A84452A41E3D7E2DDD57 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
+		26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BuiltInProfiles.local.json; sourceTree = "<group>"; };
+		543F0BA2D4AC63B3C48EE17C /* OlcApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OlcApp.swift; sourceTree = "<group>"; };
+		5F484599475C204AF0FB3486 /* Tunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tunnel.entitlements; sourceTree = "<group>"; };
+		7703B6A4658B0600D48485E8 /* OlcMobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = OlcMobile.xcframework; path = ../OlcMobile.xcframework; sourceTree = "<group>"; };
+		805713DA9C02E019EC68262A /* OlcTunnel.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = OlcTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		CD2502F9FF02935C8B7F6D7A /* BuiltInProfiles.local.json.pre-freshroom.bak */ = {isa = PBXFileReference; path = "BuiltInProfiles.local.json.pre-freshroom.bak"; sourceTree = "<group>"; };
+		DE7589F7854DEBD027356A56 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
+		E09CCC5AD49C494D620AA71D /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
+		E9659F84920ABDF148F46B17 /* OlcClientiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OlcClientiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8E9AC91E364DE6CA9F6775E1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AC6155AA53877769927EEEF4 /* OlcMobile.xcframework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BC1FAADE2FBB481AC006D3B1 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7DD2A2F4F1D2477C67DA203C /* OlcMobile.xcframework in Frameworks */,
+				4D58A7BA3E410A696F8588D6 /* Tun2SocksKit in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0CF9F645F4C52DBF1B2FDB29 = {
+			isa = PBXGroup;
+			children = (
+				EAAB2BAF94D2BBEDC849A82E /* App */,
+				BE330B00305B32EA1D198AB2 /* Tunnel */,
+				14FA32A437751FC3ACFA4AD8 /* Frameworks */,
+				C395082F34014DD1800FA88A /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		14FA32A437751FC3ACFA4AD8 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				7703B6A4658B0600D48485E8 /* OlcMobile.xcframework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BE330B00305B32EA1D198AB2 /* Tunnel */ = {
+			isa = PBXGroup;
+			children = (
+				117E9305E51B37EC77BEF651 /* Info.plist */,
+				DE7589F7854DEBD027356A56 /* PacketTunnelProvider.swift */,
+				5F484599475C204AF0FB3486 /* Tunnel.entitlements */,
+			);
+			path = Tunnel;
+			sourceTree = "<group>";
+		};
+		C395082F34014DD1800FA88A /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E9659F84920ABDF148F46B17 /* OlcClientiOS.app */,
+				805713DA9C02E019EC68262A /* OlcTunnel.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		EAAB2BAF94D2BBEDC849A82E /* App */ = {
+			isa = PBXGroup;
+			children = (
+				E09CCC5AD49C494D620AA71D /* App.entitlements */,
+				8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */,
+				26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */,
+				CD2502F9FF02935C8B7F6D7A /* BuiltInProfiles.local.json.pre-freshroom.bak */,
+				543F0BA2D4AC63B3C48EE17C /* OlcApp.swift */,
+				1D97A84452A41E3D7E2DDD57 /* ProfileStore.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		01D4280697C7802822FD3F94 /* OlcTunnel */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0927556D2D8BA7CD03286C9 /* Build configuration list for PBXNativeTarget "OlcTunnel" */;
+			buildPhases = (
+				41E4996394706AD73A3A25E5 /* Sources */,
+				BC1FAADE2FBB481AC006D3B1 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OlcTunnel;
+			packageProductDependencies = (
+				F1B98BCCA30EC2559691FB30 /* Tun2SocksKit */,
+			);
+			productName = OlcTunnel;
+			productReference = 805713DA9C02E019EC68262A /* OlcTunnel.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		A9F62BCEF542B6E3FD3E269A /* OlcClientiOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D2D7A6DABCD8999F85CC7BD8 /* Build configuration list for PBXNativeTarget "OlcClientiOS" */;
+			buildPhases = (
+				F3961E829597A4039B49BDD5 /* Sources */,
+				280E09EE63E6E2CAE23028CA /* Resources */,
+				8E9AC91E364DE6CA9F6775E1 /* Frameworks */,
+				74599D9A161A5C3030A11724 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A5B7AF9E56995E772456658A /* PBXTargetDependency */,
+			);
+			name = OlcClientiOS;
+			productName = OlcClientiOS;
+			productReference = E9659F84920ABDF148F46B17 /* OlcClientiOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		7224E1015564B30456BF5363 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					01D4280697C7802822FD3F94 = {
+						DevelopmentTeam = 2AQ4VTF696;
+						ProvisioningStyle = Automatic;
+					};
+					A9F62BCEF542B6E3FD3E269A = {
+						DevelopmentTeam = 2AQ4VTF696;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 811227F97F66D024F78C9639 /* Build configuration list for PBXProject "OlcClientiOS" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 0CF9F645F4C52DBF1B2FDB29;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				833104D23B0AAFD4211E18F6 /* XCRemoteSwiftPackageReference "Tun2SocksKit" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = C395082F34014DD1800FA88A /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				A9F62BCEF542B6E3FD3E269A /* OlcClientiOS */,
+				01D4280697C7802822FD3F94 /* OlcTunnel */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		280E09EE63E6E2CAE23028CA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5B2E55104D153F89189D76DC /* Assets.xcassets in Resources */,
+				06A189E9E0F34827C94D01D3 /* BuiltInProfiles.local.json in Resources */,
+				574F7999EE3F59194D7CD12D /* BuiltInProfiles.local.json.pre-freshroom.bak in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		41E4996394706AD73A3A25E5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A85D0B14D2F5487CDC34B664 /* PacketTunnelProvider.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F3961E829597A4039B49BDD5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				42FEE806D7231B30FC78D94A /* OlcApp.swift in Sources */,
+				A24917520669A7994816EF2B /* ProfileStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A5B7AF9E56995E772456658A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 01D4280697C7802822FD3F94 /* OlcTunnel */;
+			targetProxy = 02E7C10EC81C024E15D47685 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		688D496D6D8D8D54D62E6396 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Tunnel/Tunnel.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 2AQ4VTF696;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"..\"",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Tunnel/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.oxi717.olc.tunnel;
+				PROVISIONING_PROFILE_SPECIFIER = "OLC Tunnel App Store";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		722056C4E1240CA8BF2F5E8C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 2AQ4VTF696;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				OTHER_LDFLAGS = (
+					"-ld_classic",
+					"-lresolv",
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		745CDDC5E7B92E600ACD4E20 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 2AQ4VTF696;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"..\"",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = OLC;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.oxi717.olc;
+				PROVISIONING_PROFILE_SPECIFIER = "OLC App Store";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7D233309FF543C70CA0BCF0D /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 2AQ4VTF696;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MARKETING_VERSION = 0.1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				OTHER_LDFLAGS = (
+					"-ld_classic",
+					"-lresolv",
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		7DE1347375866DE63026845E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 2AQ4VTF696;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"..\"",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = OLC;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIRequiresFullScreen = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.oxi717.olc;
+				PROVISIONING_PROFILE_SPECIFIER = "OLC App Store";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		86C150118BAD3AE7B722112F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Tunnel/Tunnel.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 2AQ4VTF696;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"\"..\"",
+				);
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Tunnel/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.oxi717.olc.tunnel;
+				PROVISIONING_PROFILE_SPECIFIER = "OLC Tunnel App Store";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		811227F97F66D024F78C9639 /* Build configuration list for PBXProject "OlcClientiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				722056C4E1240CA8BF2F5E8C /* Debug */,
+				7D233309FF543C70CA0BCF0D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C0927556D2D8BA7CD03286C9 /* Build configuration list for PBXNativeTarget "OlcTunnel" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				86C150118BAD3AE7B722112F /* Debug */,
+				688D496D6D8D8D54D62E6396 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		D2D7A6DABCD8999F85CC7BD8 /* Build configuration list for PBXNativeTarget "OlcClientiOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				745CDDC5E7B92E600ACD4E20 /* Debug */,
+				7DE1347375866DE63026845E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		833104D23B0AAFD4211E18F6 /* XCRemoteSwiftPackageReference "Tun2SocksKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/EbrahimTahernejad/Tun2SocksKit";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		F1B98BCCA30EC2559691FB30 /* Tun2SocksKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 833104D23B0AAFD4211E18F6 /* XCRemoteSwiftPackageReference "Tun2SocksKit" */;
+			productName = Tun2SocksKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 7224E1015564B30456BF5363 /* Project object */;
+}

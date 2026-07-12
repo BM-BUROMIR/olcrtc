@@ -1,0 +1,60 @@
+name: OlcClientiOS
+options:
+  bundleIdPrefix: com.oxi717.olc
+  deploymentTarget:
+    iOS: "16.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    DEVELOPMENT_TEAM: 2AQ4VTF696
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    OTHER_LDFLAGS: "-ld_classic -lresolv"
+packages:
+  Tun2SocksKit:
+    url: https://github.com/EbrahimTahernejad/Tun2SocksKit
+    branch: main
+targets:
+  OlcClientiOS:
+    type: application
+    platform: iOS
+    sources: [App]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.oxi717.olc
+        CODE_SIGN_ENTITLEMENTS: App/App.entitlements
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIRequiresFullScreen: YES
+        INFOPLIST_KEY_CFBundleDisplayName: OLC
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - target: OlcTunnel
+        embed: true
+      - framework: ../OlcMobile.xcframework
+        embed: false
+  OlcTunnel:
+    type: app-extension
+    platform: iOS
+    sources: [Tunnel]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.oxi717.olc.tunnel
+        CODE_SIGN_ENTITLEMENTS: Tunnel/Tunnel.entitlements
+        GENERATE_INFOPLIST_FILE: "NO"
+    info:
+      path: Tunnel/Info.plist
+      properties:
+        CFBundleDisplayName: OLC Tunnel
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PacketTunnelProvider
+    dependencies:
+      - framework: ../OlcMobile.xcframework
+        embed: false
+      - package: Tun2SocksKit

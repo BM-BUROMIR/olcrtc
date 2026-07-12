@@ -9,6 +9,7 @@ def env(name, default = nil)
 end
 
 default_app_dirs = [
+  File.expand_path("../../apps/ios/OlcClientiOS", __dir__),
   File.expand_path("../../../client/ios/OlcClientiOS", __dir__),
   File.expand_path("../../../../../client/ios/OlcClientiOS", __dir__)
 ]

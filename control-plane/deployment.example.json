@@ -1,0 +1,10 @@
+{
+  "name": "olc-stand-1",
+  "carrier": "telemost",
+  "channel": "__CHANNEL__",
+  "crypto_key": "__CRYPTO_KEY_64HEX__",
+  "transport": "vp8channel",
+  "servers": [
+    { "id": "olc-srv-1", "host": "__SRV_HOST__", "topology": "T2", "exit": "France" }
+  ]
+}
