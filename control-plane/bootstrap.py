@@ -18,9 +18,11 @@ import json
 import os
 import secrets
 import urllib.request
+import datetime as dt
 from abc import ABC, abstractmethod
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from envelope import validate_envelope
 
 MAGIC = b"OLCB1"  # формат: MAGIC | nonce(12) | ciphertext+tag
 
@@ -46,6 +48,19 @@ def decrypt_subscription(blob: bytes, client_key: bytes) -> dict:
 def gen_client_key() -> str:
     """Новый per-client ключ (hex, 64 символа)."""
     return secrets.token_bytes(32).hex()
+
+
+def prepare_payload(
+    payload: dict,
+    *,
+    expected_profile_id: str,
+    now: dt.datetime | None = None,
+    allow_legacy: bool = False,
+) -> dict:
+    """Validate a publish payload, requiring an envelope outside explicit migration."""
+    if allow_legacy and "schema_version" not in payload:
+        return payload
+    return validate_envelope(payload, expected_profile_id=expected_profile_id, now=now)
 
 
 # ── backends ──────────────────────────────────────────────────────────────────
@@ -133,6 +148,8 @@ if __name__ == "__main__":
     p.add_argument("--subscription", required=True, help="JSON-файл подписки (из room_manager subscription)")
     p.add_argument("--client-id", required=True)
     p.add_argument("--client-key", required=True, help="hex 64 (gen-key)")
+    p.add_argument("--profile-id", required=True, help="managed profile id in the envelope")
+    p.add_argument("--allow-legacy", action="store_true", help="migration only: publish a bare subscription")
     p.add_argument("--fs-root", help="FilesystemBackend root (тест)")
     p.add_argument("--yc-bucket", help="YandexStorageBackend bucket (прод)")
 
@@ -146,6 +163,11 @@ if __name__ == "__main__":
     elif args.cmd == "publish":
         with open(args.subscription, encoding="utf-8") as fh:
             sub_obj = json.load(fh)
+        sub_obj = prepare_payload(
+            sub_obj,
+            expected_profile_id=args.profile_id,
+            allow_legacy=args.allow_legacy,
+        )
         if args.fs_root:
             backend: Backend = FilesystemBackend(args.fs_root)
         elif args.yc_bucket:
