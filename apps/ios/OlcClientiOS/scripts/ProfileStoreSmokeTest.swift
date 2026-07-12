@@ -60,12 +60,13 @@ struct ProfileStoreSmokeTest {
         check(reloaded.profiles.contains { $0.name == "Custom" }, "custom profile should persist")
 
         let managedJSON = """
-        {"id":"managed-telemost","name":"Managed Telemost","bootstrap":{"url":"https://example.invalid/bootstrap/device/telemost.olcb","client_key":"\(String(repeating: "d", count: 64))"}}
+        {"id":"telemost","name":"Managed Telemost","bootstrap":{"url":"https://example.invalid/bootstrap/device/telemost.olcb","client_key":"\(String(repeating: "d", count: 64))"}}
         """
         let managed = try reloaded.addManagedProfileFromJSON(json: managedJSON)
         check(managed.bootstrap?.url.contains("example.invalid") == true, "managed descriptor should import")
         let managedReload = ProfileStore(defaults: defaults, builtInProfiles: [telemost, wb])
         check(managedReload.profiles.first { $0.id == managed.id }?.bootstrap == managed.bootstrap, "managed descriptor should persist")
+        check(managedReload.profiles.filter { $0.id == "telemost" }.count == 1, "managed enrollment should replace template")
 
         managedReload.deleteProfile(id: custom.id)
         check(!managedReload.profiles.contains { $0.id == custom.id }, "custom profile should delete")

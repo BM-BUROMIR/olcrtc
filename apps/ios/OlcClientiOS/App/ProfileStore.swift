@@ -132,7 +132,10 @@ final class ProfileStore: ObservableObject {
 
     func reload(preferredSelection: String? = nil) {
         let customProfiles = loadCustomProfiles()
-        profiles = builtInProfiles + customProfiles
+        let customByID = Dictionary(uniqueKeysWithValues: customProfiles.map { ($0.id, $0) })
+        let builtInIDs = Set(builtInProfiles.map(\.id))
+        profiles = builtInProfiles.map { customByID[$0.id] ?? $0 }
+            + customProfiles.filter { !builtInIDs.contains($0.id) }
 
         let persistedSelection = preferredSelection ?? defaults.string(forKey: selectedProfileKey)
         if let persistedSelection, profiles.contains(where: { $0.id == persistedSelection }) {
