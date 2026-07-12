@@ -247,6 +247,7 @@ apps/ios/OlcClientiOS/**/*.ipa
 apps/ios/OlcClientiOS/**/*.mobileprovision
 apps/ios/OlcClientiOS/**/*.bak
 apps/ios/OlcClientiOS/**/xcuserdata/
+apps/ios/*.xcframework/
 control-plane/rooms.json
 control-plane/devices.json
 control-plane/state/

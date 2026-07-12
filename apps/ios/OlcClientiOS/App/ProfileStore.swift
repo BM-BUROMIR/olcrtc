@@ -12,8 +12,15 @@ struct Subscription: Codable, Equatable {
 struct VPNProfile: Codable, Equatable, Identifiable {
     let id: String
     var name: String
-    var subscription: Subscription
+    var subscription: Subscription?
+    var bootstrap: BootstrapDescriptor? = nil
     var isBuiltIn: Bool
+}
+
+private struct ManagedEnrollment: Codable {
+    let id: String
+    let name: String
+    let bootstrap: BootstrapDescriptor
 }
 
 enum BuiltInProfiles {
@@ -33,6 +40,7 @@ enum BuiltInProfiles {
                 id: profile.id,
                 name: profile.name,
                 subscription: profile.subscription,
+                bootstrap: profile.bootstrap,
                 isBuiltIn: true
             )
         }
@@ -71,6 +79,7 @@ final class ProfileStore: ObservableObject {
             id: "custom-\(UUID().uuidString)",
             name: trimmedName.isEmpty ? subscription.carrier : trimmedName,
             subscription: subscription,
+            bootstrap: nil,
             isBuiltIn: false
         )
         var customProfiles = loadCustomProfiles()
@@ -85,6 +94,32 @@ final class ProfileStore: ObservableObject {
         let data = Data(json.utf8)
         let subscription = try JSONDecoder().decode(Subscription.self, from: data)
         return addProfile(name: name, subscription: subscription)
+    }
+
+    @discardableResult
+    func addManagedProfileFromJSON(json: String) throws -> VPNProfile {
+        let enrollment = try JSONDecoder().decode(ManagedEnrollment.self, from: Data(json.utf8))
+        guard !enrollment.id.isEmpty,
+              URL(string: enrollment.bootstrap.url)?.scheme == "https",
+              Data(hexString: enrollment.bootstrap.client_key)?.count == 32 else {
+            throw NSError(
+                domain: "olc.profile",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "некорректный managed enrollment"]
+            )
+        }
+        let profile = VPNProfile(
+            id: enrollment.id,
+            name: enrollment.name,
+            subscription: nil,
+            bootstrap: enrollment.bootstrap,
+            isBuiltIn: false
+        )
+        var customProfiles = loadCustomProfiles().filter { $0.id != profile.id }
+        customProfiles.append(profile)
+        saveCustomProfiles(customProfiles)
+        reload(preferredSelection: profile.id)
+        return profile
     }
 
     func deleteProfile(id: String) {
@@ -119,6 +154,7 @@ final class ProfileStore: ObservableObject {
                     id: profile.id,
                     name: profile.name,
                     subscription: profile.subscription,
+                    bootstrap: profile.bootstrap,
                     isBuiltIn: false
                 )
             } ?? []

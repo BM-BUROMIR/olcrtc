@@ -471,8 +471,8 @@ struct ContentView: View {
                     }
 
                     if let profile = profiles.selectedProfile {
-                        LabeledContent("Канал", value: profile.subscription.carrier)
-                        LabeledContent("Транспорт", value: profile.subscription.transport ?? "vp8channel")
+                        LabeledContent("Канал", value: profile.subscription?.carrier ?? profile.id)
+                        LabeledContent("Транспорт", value: profile.subscription?.transport ?? "managed")
                         LabeledContent("Тип", value: profile.isBuiltIn ? "built-in" : "custom")
                         if !profile.isBuiltIn {
                             Button("Удалить профиль", role: .destructive) {
@@ -805,8 +805,18 @@ struct ContentView: View {
     }
 
     private func resolveSubscription() async throws -> Subscription {
-        if let profile = profiles.selectedProfile {
-            return profile.subscription
+        if let profile = profiles.selectedProfile, let descriptor = profile.bootstrap {
+            guard let base = FileManager.default
+                .containerURL(forSecurityApplicationGroupIdentifier: "group.com.oxi717.olc") else {
+                throw Sub.err("нет app-group для bootstrap cache")
+            }
+            let resolver = BootstrapResolver(
+                cache: BootstrapCache(directory: base.appendingPathComponent("olc/bootstrap"))
+            )
+            return try await resolver.resolve(descriptor: descriptor, profileID: profile.id).subscription
+        }
+        if let subscription = profiles.selectedProfile?.subscription {
+            return subscription
         }
         if !localSub.isEmpty, let data = localSub.data(using: .utf8) {
             return try JSONDecoder().decode(Subscription.self, from: data)
@@ -882,9 +892,13 @@ struct AddProfileView: View {
         do {
             let trimmedJSON = json.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedJSON.isEmpty {
-                let subscription = try JSONDecoder().decode(Subscription.self, from: Data(trimmedJSON.utf8))
-                try validate(subscription)
-                store.addProfile(name: name, subscription: subscription)
+                if let managed = try? store.addManagedProfileFromJSON(json: trimmedJSON) {
+                    _ = managed
+                } else {
+                    let subscription = try JSONDecoder().decode(Subscription.self, from: Data(trimmedJSON.utf8))
+                    try validate(subscription)
+                    store.addProfile(name: name, subscription: subscription)
+                }
             } else {
                 let trimmedKey = cryptoKey.trimmingCharacters(in: .whitespacesAndNewlines)
                 let trimmedTransport = transport.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -917,20 +931,5 @@ struct AddProfileView: View {
         guard Data(hexString: subscription.crypto_key)?.count == 32 else {
             throw Sub.err("crypto_key должен быть hex64")
         }
-    }
-}
-
-extension Data {
-    init?(hexString: String) {
-        let s = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard s.count % 2 == 0 else { return nil }
-        var d = Data(capacity: s.count / 2)
-        var i = s.startIndex
-        while i < s.endIndex {
-            let n = s.index(i, offsetBy: 2)
-            guard let b = UInt8(s[i..<n], radix: 16) else { return nil }
-            d.append(b); i = n
-        }
-        self = d
     }
 }

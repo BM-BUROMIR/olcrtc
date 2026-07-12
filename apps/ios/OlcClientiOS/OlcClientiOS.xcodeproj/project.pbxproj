@@ -7,11 +7,11 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		06A189E9E0F34827C94D01D3 /* BuiltInProfiles.local.json in Resources */ = {isa = PBXBuildFile; fileRef = 26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */; };
+		001FEEA0632F6AD0C63512E9 /* ManagedProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B080973D9A28CCE7D0C7187 /* ManagedProfile.swift */; };
 		42FEE806D7231B30FC78D94A /* OlcApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 543F0BA2D4AC63B3C48EE17C /* OlcApp.swift */; };
 		4D58A7BA3E410A696F8588D6 /* Tun2SocksKit in Frameworks */ = {isa = PBXBuildFile; productRef = F1B98BCCA30EC2559691FB30 /* Tun2SocksKit */; };
-		574F7999EE3F59194D7CD12D /* BuiltInProfiles.local.json.pre-freshroom.bak in Resources */ = {isa = PBXBuildFile; fileRef = CD2502F9FF02935C8B7F6D7A /* BuiltInProfiles.local.json.pre-freshroom.bak */; };
 		5B2E55104D153F89189D76DC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */; };
+		660808A3EA1B33DE5095C30C /* BootstrapResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70276BDC1E8E718CAC204682 /* BootstrapResolver.swift */; };
 		7DD2A2F4F1D2477C67DA203C /* OlcMobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7703B6A4658B0600D48485E8 /* OlcMobile.xcframework */; };
 		A24917520669A7994816EF2B /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D97A84452A41E3D7E2DDD57 /* ProfileStore.swift */; };
 		A85D0B14D2F5487CDC34B664 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7589F7854DEBD027356A56 /* PacketTunnelProvider.swift */; };
@@ -44,15 +44,15 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0B080973D9A28CCE7D0C7187 /* ManagedProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedProfile.swift; sourceTree = "<group>"; };
 		117E9305E51B37EC77BEF651 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		1D97A84452A41E3D7E2DDD57 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
-		26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BuiltInProfiles.local.json; sourceTree = "<group>"; };
 		543F0BA2D4AC63B3C48EE17C /* OlcApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OlcApp.swift; sourceTree = "<group>"; };
 		5F484599475C204AF0FB3486 /* Tunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tunnel.entitlements; sourceTree = "<group>"; };
+		70276BDC1E8E718CAC204682 /* BootstrapResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapResolver.swift; sourceTree = "<group>"; };
 		7703B6A4658B0600D48485E8 /* OlcMobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = OlcMobile.xcframework; path = ../OlcMobile.xcframework; sourceTree = "<group>"; };
 		805713DA9C02E019EC68262A /* OlcTunnel.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = OlcTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		CD2502F9FF02935C8B7F6D7A /* BuiltInProfiles.local.json.pre-freshroom.bak */ = {isa = PBXFileReference; path = "BuiltInProfiles.local.json.pre-freshroom.bak"; sourceTree = "<group>"; };
 		DE7589F7854DEBD027356A56 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
 		E09CCC5AD49C494D620AA71D /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		E9659F84920ABDF148F46B17 /* OlcClientiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OlcClientiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -121,8 +121,8 @@
 			children = (
 				E09CCC5AD49C494D620AA71D /* App.entitlements */,
 				8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */,
-				26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */,
-				CD2502F9FF02935C8B7F6D7A /* BuiltInProfiles.local.json.pre-freshroom.bak */,
+				70276BDC1E8E718CAC204682 /* BootstrapResolver.swift */,
+				0B080973D9A28CCE7D0C7187 /* ManagedProfile.swift */,
 				543F0BA2D4AC63B3C48EE17C /* OlcApp.swift */,
 				1D97A84452A41E3D7E2DDD57 /* ProfileStore.swift */,
 			);
@@ -166,6 +166,8 @@
 				A5B7AF9E56995E772456658A /* PBXTargetDependency */,
 			);
 			name = OlcClientiOS;
+			packageProductDependencies = (
+			);
 			productName = OlcClientiOS;
 			productReference = E9659F84920ABDF148F46B17 /* OlcClientiOS.app */;
 			productType = "com.apple.product-type.application";
@@ -218,8 +220,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				5B2E55104D153F89189D76DC /* Assets.xcassets in Resources */,
-				06A189E9E0F34827C94D01D3 /* BuiltInProfiles.local.json in Resources */,
-				574F7999EE3F59194D7CD12D /* BuiltInProfiles.local.json.pre-freshroom.bak in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -238,6 +238,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				660808A3EA1B33DE5095C30C /* BootstrapResolver.swift in Sources */,
+				001FEEA0632F6AD0C63512E9 /* ManagedProfile.swift in Sources */,
 				42FEE806D7231B30FC78D94A /* OlcApp.swift in Sources */,
 				A24917520669A7994816EF2B /* ProfileStore.swift in Sources */,
 			);
@@ -258,9 +260,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Tunnel/Tunnel.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Distribution";
-				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = 2AQ4VTF696;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"..\"",
@@ -273,7 +272,6 @@
 					"@executable_path/../../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.oxi717.olc.tunnel;
-				PROVISIONING_PROFILE_SPECIFIER = "OLC Tunnel App Store";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -338,10 +336,7 @@
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
-				OTHER_LDFLAGS = (
-					"-ld_classic",
-					"-lresolv",
-				);
+				OTHER_LDFLAGS = "-ld_classic -lresolv";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -356,9 +351,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Distribution";
-				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = 2AQ4VTF696;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"..\"",
@@ -372,7 +365,6 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.oxi717.olc;
-				PROVISIONING_PROFILE_SPECIFIER = "OLC App Store";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -430,10 +422,7 @@
 				MARKETING_VERSION = 0.1.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
-				OTHER_LDFLAGS = (
-					"-ld_classic",
-					"-lresolv",
-				);
+				OTHER_LDFLAGS = "-ld_classic -lresolv";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
@@ -448,9 +437,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Distribution";
-				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = 2AQ4VTF696;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"..\"",
@@ -464,7 +451,6 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.oxi717.olc;
-				PROVISIONING_PROFILE_SPECIFIER = "OLC App Store";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -474,9 +460,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Tunnel/Tunnel.entitlements;
-				CODE_SIGN_IDENTITY = "Apple Distribution";
-				CODE_SIGN_STYLE = Manual;
-				DEVELOPMENT_TEAM = 2AQ4VTF696;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"..\"",
@@ -489,7 +472,6 @@
 					"@executable_path/../../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.oxi717.olc.tunnel;
-				PROVISIONING_PROFILE_SPECIFIER = "OLC Tunnel App Store";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
