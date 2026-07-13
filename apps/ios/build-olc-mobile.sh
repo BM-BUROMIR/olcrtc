@@ -19,7 +19,7 @@ rm -rf "$OUTPUT"
   GOFLAGS="${GOFLAGS:+$GOFLAGS }-buildvcs=false" gomobile bind \
     -target=ios,iossimulator \
     -trimpath \
-    -ldflags='-s -w' \
+    -ldflags='-s -w -X runtime.modinfo=olc-reproducible-build' \
     -o "$OUTPUT" \
     ./mobile/olcmobile
 )

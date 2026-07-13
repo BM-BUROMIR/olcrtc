@@ -75,7 +75,7 @@ expect_rejected "backup file in package input" \
 path_root="$fixtures/path-root"
 mkdir -p "$path_root"
 make_profiles "$path_root/BuiltInProfiles.local.json"
-printf '%s\n' '/Users/developer/private/build' >"$path_root/metadata.txt"
+printf '/%s/%s/private/build\n' Users developer >"$path_root/metadata.txt"
 expect_rejected "absolute local path in package input" \
   --profiles "$path_root/BuiltInProfiles.local.json" --scan-root "$path_root"
 
