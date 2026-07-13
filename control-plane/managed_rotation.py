@@ -196,6 +196,7 @@ class SSHServerActivator:
             f"sudo install -o {shlex.quote(owner)} -g {shlex.quote(group)} -m {shlex.quote(mode)} "
             f"{shlex.quote(upload)} {shlex.quote(self.remote_config)}",
             f"rm -f {shlex.quote(upload)}",
+            f"sudo systemctl reset-failed {shlex.quote(self.service)}",
             f"sudo systemctl restart {shlex.quote(self.service)}",
         ])
         token = ServerBackup(backup, owner, group, mode)
@@ -237,6 +238,7 @@ class SSHServerActivator:
         remote = " && ".join([
             f"sudo install -o {shlex.quote(token.owner)} -g {shlex.quote(token.group)} "
             f"-m {shlex.quote(token.mode)} {shlex.quote(token.path)} {shlex.quote(self.remote_config)}",
+            f"sudo systemctl reset-failed {shlex.quote(self.service)}",
             f"sudo systemctl restart {shlex.quote(self.service)}",
         ])
         _run(["ssh", *self._ssh_options, self._target, remote])

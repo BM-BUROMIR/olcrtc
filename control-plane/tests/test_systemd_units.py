@@ -79,6 +79,14 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn("ProtectSystem=strict", service)
         self.assertNotIn("/Users/", service)
 
+    def test_wb_edge_restart_policy_is_bounded(self) -> None:
+        policy = (ROOT / "systemd/olc-wb-srv-restart-policy.conf").read_text()
+
+        self.assertIn("Restart=on-failure", policy)
+        self.assertIn("StartLimitIntervalSec=5min", policy)
+        self.assertIn("StartLimitBurst=5", policy)
+        self.assertNotIn("Restart=always", policy)
+
 
 if __name__ == "__main__":
     unittest.main()

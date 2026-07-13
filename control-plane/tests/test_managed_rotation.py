@@ -149,6 +149,7 @@ class ServerActivatorTest(unittest.TestCase):
         rollback_command = run.call_args_list[-1].args[0][-1]
         self.assertIn("install -o root -g ubuntu -m 640", rollback_command)
         self.assertIn("/var/lib/olc-bypass/rotation/", rollback_command)
+        self.assertIn("systemctl reset-failed olc.service", rollback_command)
 
 
 class ShadowIntegrationTest(unittest.TestCase):
