@@ -17,10 +17,14 @@ Do not copy credentials through command arguments, shell history, git, or journa
 ```bash
 sudo install -m 0755 control-plane/run-systemd-rotation.sh /opt/olc/control-plane/
 sudo install -m 0755 control-plane/run-systemd-wb-rotation.sh /opt/olc/control-plane/
+sudo install -D -m 0644 control-plane/systemd/olc-control-plane.conf /etc/sysusers.d/olc-control-plane.conf
+sudo systemd-sysusers /etc/sysusers.d/olc-control-plane.conf
 sudo install -m 0644 control-plane/systemd/olc-control-plane-shadow.service /etc/systemd/system/
 sudo install -m 0644 control-plane/systemd/olc-control-plane-shadow.timer /etc/systemd/system/
 sudo install -m 0644 control-plane/systemd/olc-control-plane-wb.service /etc/systemd/system/
 sudo install -m 0644 control-plane/systemd/olc-control-plane-wb.timer /etc/systemd/system/
+STATE_DIR=$(sudo readlink -f /var/lib/olc-control-plane)
+sudo chown -R olc-control-plane:olc-control-plane "$STATE_DIR"
 sudo systemctl daemon-reload
 sudo systemctl enable --now olc-control-plane-shadow.timer olc-control-plane-wb.timer
 sudo systemctl start olc-control-plane-shadow.service

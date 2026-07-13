@@ -10,7 +10,9 @@ class SystemdUnitTest(unittest.TestCase):
         service = (ROOT / "systemd/olc-control-plane-shadow.service").read_text()
 
         self.assertIn("Type=oneshot", service)
-        self.assertIn("DynamicUser=yes", service)
+        self.assertIn("User=olc-control-plane", service)
+        self.assertIn("Group=olc-control-plane", service)
+        self.assertNotIn("DynamicUser=", service)
         self.assertIn("StateDirectory=olc-control-plane", service)
         self.assertIn("UMask=0077", service)
         self.assertIn("NoNewPrivileges=yes", service)
@@ -49,7 +51,9 @@ class SystemdUnitTest(unittest.TestCase):
         timer = (ROOT / "systemd/olc-control-plane-wb.timer").read_text()
 
         self.assertIn("Type=oneshot", service)
-        self.assertIn("DynamicUser=yes", service)
+        self.assertIn("User=olc-control-plane", service)
+        self.assertIn("Group=olc-control-plane", service)
+        self.assertNotIn("DynamicUser=", service)
         self.assertIn("StateDirectory=olc-control-plane", service)
         self.assertIn("UMask=0077", service)
         self.assertIn("Requires=olc-control-plane-xray.service", service)
@@ -72,6 +76,18 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn("Persistent=true", timer)
         self.assertIn("Unit=olc-control-plane-wb.service", timer)
         self.assertNotIn("/Users/", timer)
+
+    def test_provider_services_share_a_declared_system_user(self) -> None:
+        sysusers = (ROOT / "systemd/olc-control-plane.conf").read_text()
+
+        self.assertIn('u olc-control-plane - "OLC control plane"', sysusers)
+        self.assertIn("/var/lib/olc-control-plane", sysusers)
+        self.assertIn("/usr/sbin/nologin", sysusers)
+
+        runbook = (ROOT / "runbooks/shadow-rollout.md").read_text()
+        self.assertIn("/etc/sysusers.d/olc-control-plane.conf", runbook)
+        self.assertIn("systemd-sysusers", runbook)
+        self.assertIn("STATE_DIR=$(sudo readlink -f /var/lib/olc-control-plane)", runbook)
 
     def test_runner_uses_systemd_credential_directory(self) -> None:
         runner = (ROOT / "run-systemd-rotation.sh").read_text()

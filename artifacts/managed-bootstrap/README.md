@@ -18,6 +18,13 @@ databases remain in the ignored workspace runtime tree.
 - Active field generations at the start of acceptance were Telemost `7` and WB `2`.
 - The deployed edge executable is identified in `artifacts/control-plane-deploy/README.md`.
 
+The independent provider units were deployed at `2026-07-13T18:00:00Z`. The first production run
+returned `healthy` for Telemost generation `7` and WB generation `2`; both oneshot units exited with
+status `0` and both persistent 30-minute timers remained active. Deployment exposed and fixed an
+ownership defect in the earlier unit layout: two transient `DynamicUser` identities could not safely
+share the same SQLite and room state. Both units now run as the declared, non-login
+`olc-control-plane` system user, preserving one shared state directory without mutable UID ownership.
+
 ## Physical iPhone 11 matrix
 
 | Scenario | Result |

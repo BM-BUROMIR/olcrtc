@@ -6,7 +6,8 @@ Requires=olc-control-plane-xray.service
 
 [Service]
 Type=oneshot
-DynamicUser=yes
+User=olc-control-plane
+Group=olc-control-plane
 StateDirectory=olc-control-plane
 WorkingDirectory=/opt/olc
 UMask=0077
