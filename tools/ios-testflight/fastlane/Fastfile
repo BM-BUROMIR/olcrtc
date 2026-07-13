@@ -101,6 +101,18 @@ def verify_builtin_profiles
   UI.user_error!("missing built-in profiles: #{missing.join(", ")}") unless missing.empty?
 end
 
+def verify_package
+  profiles = File.join(ios_app_dir, "App", "BuiltInProfiles.local.json")
+  command = [
+    File.join(repo_root, "tools", "ios-testflight", "verify-package.sh"),
+    "--profiles", profiles,
+    "--scan-root", profiles
+  ]
+  framework = File.join(repo_root, "apps", "ios", "OlcMobile.xcframework")
+  command += ["--scan-root", framework] if File.exist?(framework)
+  sh(*command)
+end
+
 def generate_xcode_project
   Dir.chdir(ios_app_dir) do
     sh("xcodegen", "generate")
@@ -116,6 +128,7 @@ def prepare_ios_project(rebuild_mobile: false)
   generate_profiles
   verify_builtin_profiles
   rebuild_mobile_framework if rebuild_mobile
+  verify_package
   generate_xcode_project
 end
 
