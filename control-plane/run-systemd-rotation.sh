@@ -18,4 +18,4 @@ export OLC_DEPLOYMENT_PATH="$CREDENTIALS_DIRECTORY/deployment.json"
 export OLC_SERVER_BASE_CONFIG="$CREDENTIALS_DIRECTORY/server-base.yaml"
 export PYTHONPATH="$ROOT/control-plane"
 
-exec python3 "$ROOT/control-plane/managed_rotation.py" --config "$CONFIG"
+exec python3 "$ROOT/control-plane/managed_rotation.py" --config "$CONFIG" "$@"

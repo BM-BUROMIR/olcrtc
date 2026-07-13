@@ -39,6 +39,7 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn('OLC_SSH_KEY_PATH="$CREDENTIALS_DIRECTORY/ssh_key"', runner)
         self.assertIn('OLC_TELEMOST_COOKIES_PATH="$CREDENTIALS_DIRECTORY/telemost.cookies"', runner)
         self.assertIn('OLC_SSH_KNOWN_HOSTS_PATH="$CREDENTIALS_DIRECTORY/known_hosts"', runner)
+        self.assertIn('managed_rotation.py" --config "$CONFIG" "$@"', runner)
 
     def test_shadow_service_waits_for_private_egress(self) -> None:
         service = (ROOT / "systemd/olc-control-plane-shadow.service").read_text()
