@@ -1,0 +1,55 @@
+# Managed VPN field acceptance
+
+Sanitized status for the private managed deployment on 2026-07-13. Raw device logs, provider
+credentials, room identifiers, bootstrap keys, App Store Connect responses, and control-plane
+databases remain in the ignored workspace runtime tree.
+
+## Deployed control plane
+
+- Durable SQLite state, operation journal, fencing leases, online backup, and restore validation
+  are deployed.
+- Telemost and WB run as independent scheduled workers. A failure in one provider does not block
+  refresh of the other.
+- Each enabled device receives independently encrypted Telemost and WB objects. Device bootstrap
+  keys and provider owner credentials are not included in client envelopes or tracked artifacts.
+- Active field generations at the start of acceptance were Telemost `7` and WB `2`.
+- The deployed edge executable is identified in `artifacts/control-plane-deploy/README.md`.
+
+## Physical iPhone 11 matrix
+
+| Scenario | Result |
+|---|---|
+| Telemost, 10 rounds of HTTPS plus 1 MiB | 10/10, each round `ok=3 fail=0` |
+| WB, 10 rounds of HTTPS plus 1 MiB | 10/10, each round `ok=3 fail=0` |
+| Managed Telemost generation rotation | Client detected the newer generation and reconnected without manual configuration |
+| Managed WB generation rotation | Client detected the newer generation and reconnected without manual configuration |
+| WB hard service restart | Health watchdog terminated the dead data path; iOS On-Demand restored it without user action |
+| Full edge VM restart while using Telemost | One health timeout, recovery in the next probe interval, then HTTPS plus 1 MiB `ok=3 fail=0` |
+
+The VM restart was issued through the cloud API at `2026-07-13T15:45:39Z`. Boot completion was
+confirmed independently from serial output. The iPhone health check recovered at
+`2026-07-13T15:46:40Z`; a fresh application probe completed `3/3` after recovery.
+
+## TestFlight artifact
+
+- Version: `0.1.0`
+- Build: `202607131616`
+- App Store Connect processing state: `VALID`
+- Included managed profiles: Telemost and WB
+- Embedded static subscriptions: none
+- App Group entitlement: present
+- Packet Tunnel Provider entitlement: present
+- Private-path scan of the exported IPA: passed
+
+The build embeds one private per-device bootstrap descriptor for the current owner cohort. A second
+tester requires a separate enrollment credential before distribution; sharing the owner's build as
+a universal credential is not an accepted production path.
+
+## 24-hour soak
+
+The resumable physical-device soak started at `2026-07-13T16:41:24Z`. It probes every ten minutes,
+keeps each provider active for six rounds, then switches provider and reconnects through managed
+bootstrap. The first Telemost round completed `ok=3 fail=0`, including a complete 1 MiB download.
+
+Acceptance remains pending until at least `2026-07-14T16:41:24Z`. The final summary must report zero
+failed rounds; starting the runner is not evidence that the 24-hour requirement has passed.

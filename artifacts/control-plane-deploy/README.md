@@ -4,12 +4,13 @@ The deployed Linux probe is reproducible from the repository:
 
 ```bash
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -trimpath \
+  -ldflags='-s -w' \
   -o artifacts/control-plane-deploy/olcrtc-linux-amd64 ./cmd/olcrtc
 ```
 
-- Go source revision: `55b6622a896effe4cbd80bf6c9f5c682c5c304ab`
+- Go source revision: `6f85efa245d9b5de79f79ce7996470541268ef3b`
 - Target: `linux/amd64`, static executable
-- SHA-256: `64f69f72ffdc5b38cd09c09a6a66ea0f56aa32c08d66381887bdebf3189cdc77`
+- SHA-256: `739a9fa45d39b1c481486226dcfe4d1597312161c0e0a0b30b39d18071b3b88f`
 - First durable deployment revision: `269b209f0ea08601dceeb0d38624dda04ddbbd10`
 
 The binary remains in this directory for cross-session reuse but is intentionally not committed.
