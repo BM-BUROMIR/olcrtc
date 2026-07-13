@@ -4,7 +4,8 @@
 //
 // Quick reference:
 //
-//	mage check          # build + vet + lint + secrets + unit tests (pre-commit)
+//	mage check          # portable build + vet + lint + secrets + Go/Python tests
+//	mage localcheck     # check + iOS bootstrap/package smoke tests (macOS)
 //	mage all            # full pre-merge pipeline (check + e2e smoke matrix)
 //	mage nightly        # everything including stress matrix (~6h)
 //
@@ -67,10 +68,15 @@ func Help() error {
 	return sh.RunV("mage", "-l")
 }
 
-// Check runs the fast pre-commit pipeline: build + vet + lint + secrets + unit tests.
+// Check runs the portable pre-commit pipeline: build, static checks, and local tests.
 // Use this before every commit.
 func Check() {
-	mg.SerialDeps(Build, Vet, Lint, Secrets, TestFull)
+	mg.SerialDeps(Build, Vet, Lint, Secrets, TestControlPlane, TestFull)
+}
+
+// LocalCheck adds the macOS-only iOS bootstrap and package smoke tests.
+func LocalCheck() {
+	mg.SerialDeps(Check, TestIOS)
 }
 
 // All runs the full pre-merge pipeline: Check + the real-provider smoke
@@ -189,6 +195,26 @@ func Test() error {
 // TestFull runs all unit + fast e2e tests with race detector. No real providers.
 func TestFull() error {
 	return sh.RunV(goexe, "test", "-race", "-count=1", "-timeout", "10m", "./...")
+}
+
+// TestControlPlane runs the secret-free Python control-plane unit suite.
+func TestControlPlane() error {
+	cmd := exec.Command("python3", "-m", "unittest", "discover", "-s", "tests")
+	cmd.Dir = "control-plane"
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("run control-plane tests: %w", err)
+	}
+	return nil
+}
+
+// TestIOS runs managed bootstrap, migration, and package smoke tests on macOS.
+func TestIOS() error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("iOS smoke tests require macOS, current platform is %s", runtime.GOOS)
+	}
+	return sh.RunV("script/test-ios-local.sh")
 }
 
 // E2e runs the real-provider smoke matrix.
