@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from rotation_journal import Operation, RotationJournal
+from rotation_journal import GenerationCandidate, Operation, RotationJournal
 from state_store import ControlPlaneStore, Lease, StaleFence
 
 
@@ -238,6 +238,7 @@ class ImmutablePublisher:
         stream_id: str,
         object_key: str,
         blob: bytes,
+        generation: GenerationCandidate,
         expected_etag: str | None,
         lease: Lease,
         now: dt.datetime,
@@ -253,6 +254,7 @@ class ImmutablePublisher:
             operation_id,
             object_key=object_key,
             content_hash=content_hash,
+            generation=generation,
             lease=lease,
             now=now,
         )

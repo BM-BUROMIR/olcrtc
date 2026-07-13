@@ -3,6 +3,7 @@ import json
 import pathlib
 import tempfile
 import unittest
+import sqlite3
 
 from shadow_runtime import ShadowEndpoint, record_shadow_generation
 
@@ -27,6 +28,8 @@ class ShadowRuntimeTest(unittest.TestCase):
             "schema_version": 1,
             "profile_id": "telemost",
             "generation": 7,
+            "issued_at": "2026-07-13T12:00:00Z",
+            "expires_at": "2026-07-14T12:00:00Z",
             "subscription": {
                 "room": "room-7",
                 "channel": "channel-7",
@@ -47,6 +50,11 @@ class ShadowRuntimeTest(unittest.TestCase):
         object_path = self.root / "shadow-objects" / result["object_key"]
         self.assertEqual(json.loads(object_path.read_text()), envelope)
         self.assertFalse((self.root / "owner-iphone11" / "telemost.olcb").exists())
+        with sqlite3.connect(self.root / "control-plane.db") as connection:
+            generation = connection.execute(
+                "SELECT epoch, generation, state FROM profile_generations"
+            ).fetchone()
+        self.assertEqual(generation, (1, 7, "active"))
 
 
 if __name__ == "__main__":

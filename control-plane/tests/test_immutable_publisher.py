@@ -12,7 +12,7 @@ from immutable_publisher import (
     SQLiteManifestGateway,
     StaleManifestFence,
 )
-from rotation_journal import RevisionCandidate, RotationJournal
+from rotation_journal import GenerationCandidate, RevisionCandidate, RotationJournal
 from state_store import ControlPlaneStore
 
 
@@ -51,6 +51,13 @@ class ImmutablePublisherTest(unittest.TestCase):
         )
         self.object_key = (
             "devices/device-1/profiles/telemost/generations/1-1.olcb"
+        )
+        self.generation = GenerationCandidate(
+            generation_id="generation-1",
+            epoch=1,
+            generation=1,
+            issued_at="2026-07-13T12:00:00Z",
+            expires_at="2026-07-14T12:00:00Z",
         )
 
     def _seed_endpoint(self) -> None:
@@ -104,6 +111,7 @@ class ImmutablePublisherTest(unittest.TestCase):
                 stream_id="device-1/telemost",
                 object_key=self.object_key,
                 blob=b"encrypted-generation",
+                generation=self.generation,
                 expected_etag=None,
                 lease=self.lease,
                 now=self.now,
@@ -123,6 +131,7 @@ class ImmutablePublisherTest(unittest.TestCase):
                 stream_id="device-1/telemost",
                 object_key=self.object_key,
                 blob=b"encrypted-generation",
+                generation=self.generation,
                 expected_etag=None,
                 lease=self.lease,
                 now=self.now,
@@ -148,6 +157,11 @@ class ImmutablePublisherTest(unittest.TestCase):
         )
 
         self.assertEqual(active.phase, "active")
+        with self.store.read_connection() as connection:
+            generation = connection.execute(
+                "SELECT state FROM profile_generations WHERE id = 'generation-1'"
+            ).fetchone()
+        self.assertEqual(generation["state"], "active")
 
     def test_gateway_rejects_lower_fencing_token(self) -> None:
         gateway = SQLiteManifestGateway(self.store)

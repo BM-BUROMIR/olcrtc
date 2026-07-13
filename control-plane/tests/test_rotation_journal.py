@@ -4,6 +4,7 @@ import tempfile
 import unittest
 
 from rotation_journal import (
+    GenerationCandidate,
     InvalidTransition,
     OperationConflict,
     RevisionCandidate,
@@ -30,6 +31,13 @@ class RotationJournalTest(unittest.TestCase):
             channel="channel-1",
             tunnel_credential_ref="secret://tunnel-1",
             provider_expires_at="2026-07-14T12:00:00Z",
+        )
+        self.generation = GenerationCandidate(
+            generation_id="generation-1",
+            epoch=1,
+            generation=1,
+            issued_at="2026-07-13T12:00:00Z",
+            expires_at="2026-07-14T12:00:00Z",
         )
 
     def _seed_endpoint(self) -> None:
@@ -123,6 +131,7 @@ class RotationJournalTest(unittest.TestCase):
             "operation-1",
             object_key="devices/device-1/profiles/telemost/generations/1-1.olcb",
             content_hash="a" * 64,
+            generation=self.generation,
             lease=self.lease,
             now=self.now,
         )
@@ -132,7 +141,11 @@ class RotationJournalTest(unittest.TestCase):
             revision = connection.execute(
                 "SELECT state FROM endpoint_revisions WHERE id = 'revision-1'"
             ).fetchone()
+            generation = connection.execute(
+                "SELECT epoch, generation, state FROM profile_generations WHERE id = 'generation-1'"
+            ).fetchone()
         self.assertEqual(revision["state"], "publish_authorized")
+        self.assertEqual(tuple(generation), (1, 1, "preparing"))
 
     def test_rejects_skipped_transition(self) -> None:
         self.journal.begin(
@@ -149,6 +162,32 @@ class RotationJournalTest(unittest.TestCase):
                 resulting_etag="etag-1",
                 lease=self.lease,
                 now=self.now,
+            )
+
+    def test_authorize_rejects_changed_generation_replay(self) -> None:
+        self.journal.begin(
+            "operation-1",
+            endpoint_id="endpoint-1",
+            candidate=self.candidate,
+            lease=self.lease,
+            now=self.now,
+        )
+        arguments = {
+            "object_key": "devices/device-1/profiles/telemost/generations/1-1.olcb",
+            "content_hash": "a" * 64,
+            "lease": self.lease,
+            "now": self.now,
+        }
+        self.journal.authorize(
+            "operation-1", generation=self.generation, **arguments
+        )
+
+        changed = GenerationCandidate(
+            **{**self.generation.__dict__, "generation": 2}
+        )
+        with self.assertRaises(OperationConflict):
+            self.journal.authorize(
+                "operation-1", generation=changed, **arguments
             )
 
 

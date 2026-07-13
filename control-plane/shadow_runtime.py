@@ -14,7 +14,7 @@ from immutable_publisher import (
     ImmutablePublisher,
     SQLiteManifestGateway,
 )
-from rotation_journal import RevisionCandidate, RotationJournal
+from rotation_journal import GenerationCandidate, RevisionCandidate, RotationJournal
 from state_store import ControlPlaneStore
 
 
@@ -144,6 +144,13 @@ def record_shadow_generation(
         stream_id=stream_id,
         object_key=object_key,
         blob=blob,
+        generation=GenerationCandidate(
+            generation_id=f"{endpoint.endpoint_id}-e1-g{generation}",
+            epoch=1,
+            generation=generation,
+            issued_at=str(envelope["issued_at"]),
+            expires_at=str(envelope["expires_at"]),
+        ),
         expected_etag=expected_etag,
         lease=lease,
         now=now,

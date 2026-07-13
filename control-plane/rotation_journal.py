@@ -33,6 +33,15 @@ class RevisionCandidate:
 
 
 @dataclass(frozen=True)
+class GenerationCandidate:
+    generation_id: str
+    epoch: int
+    generation: int
+    issued_at: str
+    expires_at: str
+
+
+@dataclass(frozen=True)
 class Operation:
     operation_id: str
     endpoint_id: str
@@ -170,11 +179,16 @@ class RotationJournal:
         *,
         object_key: str,
         content_hash: str,
+        generation: GenerationCandidate,
         lease: Lease,
         now: dt.datetime,
     ) -> Operation:
         if not object_key or re.fullmatch(r"[0-9a-f]{64}", content_hash) is None:
             raise ValueError("publication object key or SHA-256 hash is invalid")
+        if generation.epoch <= 0 or generation.generation <= 0:
+            raise ValueError("generation epoch and number must be positive")
+        if not generation.generation_id or not generation.issued_at or not generation.expires_at:
+            raise ValueError("generation identity and validity window are required")
         with self.store.transaction() as connection:
             self.store.assert_current_lease(lease, now=now, connection=connection)
             operation = self._operation(connection, operation_id)
@@ -183,7 +197,27 @@ class RotationJournal:
             if operation.fencing_token != lease.fencing_token:
                 raise OperationConflict(f"operation {operation_id} has a different fence")
             if operation.phase == "publish_authorized":
-                if operation.object_key == object_key and operation.content_hash == content_hash:
+                persisted = connection.execute(
+                    """
+                    SELECT id, epoch, generation, object_key, content_hash, issued_at, expires_at
+                    FROM profile_generations WHERE revision_id = ?
+                    """,
+                    (operation.revision_id,),
+                ).fetchone()
+                if (
+                    operation.object_key == object_key
+                    and operation.content_hash == content_hash
+                    and persisted is not None
+                    and tuple(persisted) == (
+                        generation.generation_id,
+                        generation.epoch,
+                        generation.generation,
+                        object_key,
+                        content_hash,
+                        generation.issued_at,
+                        generation.expires_at,
+                    )
+                ):
                     return operation
                 raise OperationConflict(f"operation {operation_id} publication changed")
             if operation.phase != "preparing":
@@ -197,6 +231,25 @@ class RotationJournal:
                 WHERE id = ? AND state = 'preparing' AND fencing_token = ?
                 """,
                 (operation.revision_id, lease.fencing_token),
+            )
+            connection.execute(
+                """
+                INSERT INTO profile_generations(
+                    id, revision_id, endpoint_id, epoch, generation, object_key,
+                    content_hash, state, issued_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'preparing', ?, ?)
+                """,
+                (
+                    generation.generation_id,
+                    operation.revision_id,
+                    operation.endpoint_id,
+                    generation.epoch,
+                    generation.generation,
+                    object_key,
+                    content_hash,
+                    generation.issued_at,
+                    generation.expires_at,
+                ),
             )
             connection.execute(
                 """
@@ -231,6 +284,10 @@ class RotationJournal:
                 )
             connection.execute(
                 "UPDATE endpoint_revisions SET state = 'active' WHERE id = ?",
+                (operation.revision_id,),
+            )
+            connection.execute(
+                "UPDATE profile_generations SET state = 'active' WHERE revision_id = ?",
                 (operation.revision_id,),
             )
             connection.execute(
@@ -272,6 +329,10 @@ class RotationJournal:
                 )
             connection.execute(
                 "UPDATE endpoint_revisions SET state = 'active' WHERE id = ?",
+                (operation.revision_id,),
+            )
+            connection.execute(
+                "UPDATE profile_generations SET state = 'active' WHERE revision_id = ?",
                 (operation.revision_id,),
             )
             connection.execute(
