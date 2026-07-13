@@ -36,7 +36,7 @@ def test_initializes_transactional_schema(self) -> None:
     self.assertTrue(store.foreign_keys_enabled())
     self.assertEqual(
         store.table_names(),
-        {"schema_migrations", "devices", "provider_identities", "identity_grants",
+        {"schema_migrations", "users", "devices", "provider_identities", "identity_grants",
          "profile_assignments", "device_endpoints", "endpoint_revisions",
          "profile_generations", "leases", "operations"},
     )
@@ -44,7 +44,7 @@ def test_initializes_transactional_schema(self) -> None:
 
 - [ ] **Step 2: Run the test and confirm failure**
 
-Run: `python3 -m unittest control-plane/tests/test_state_store.py -v`
+Run: `cd control-plane && python3 -m unittest tests/test_state_store.py -v`
 
 Expected: FAIL because `state_store` does not exist.
 
@@ -80,7 +80,7 @@ class ControlPlaneStore:
 
 - [ ] **Step 4: Run schema tests**
 
-Run: `python3 -m unittest control-plane/tests/test_state_store.py -v`
+Run: `cd control-plane && python3 -m unittest tests/test_state_store.py -v`
 
 Expected: PASS.
 
@@ -114,7 +114,7 @@ with self.assertRaises(StaleFence):
 
 - [ ] **Step 2: Confirm the race test fails**
 
-Run: `python3 -m unittest control-plane.tests.test_state_store.LeaseTest -v`
+Run: `cd control-plane && python3 -m unittest tests.test_state_store.LeaseTest -v`
 
 Expected: FAIL because lease APIs are absent.
 
@@ -126,7 +126,7 @@ the latest token in the same transaction.
 
 - [ ] **Step 4: Run the focused and full control-plane tests**
 
-Run: `python3 -m unittest discover -s control-plane/tests -v`
+Run: `cd control-plane && python3 -m unittest discover -s tests -v`
 
 Expected: all tests PASS.
 
@@ -162,7 +162,7 @@ with self.assertRaises(InvalidTransition):
 
 - [ ] **Step 2: Confirm failure**
 
-Run: `python3 -m unittest control-plane/tests/test_rotation_journal.py -v`
+Run: `cd control-plane && python3 -m unittest tests/test_rotation_journal.py -v`
 
 Expected: FAIL because `rotation_journal` does not exist.
 
@@ -174,7 +174,7 @@ input for an existing operation ID.
 
 - [ ] **Step 4: Run journal and store tests**
 
-Run: `python3 -m unittest control-plane/tests/test_rotation_journal.py control-plane/tests/test_state_store.py -v`
+Run: `cd control-plane && python3 -m unittest tests/test_rotation_journal.py tests/test_state_store.py -v`
 
 Expected: PASS.
 
@@ -207,7 +207,7 @@ self.assertEqual(store.operation(operation.id).phase, "active")
 
 - [ ] **Step 2: Confirm failure**
 
-Run: `python3 -m unittest control-plane/tests/test_immutable_publisher.py -v`
+Run: `cd control-plane && python3 -m unittest tests/test_immutable_publisher.py -v`
 
 Expected: FAIL because `immutable_publisher` does not exist.
 
@@ -220,7 +220,7 @@ does not replace current `<device>/<profile>.olcb` objects or server config.
 
 - [ ] **Step 4: Run all control-plane tests**
 
-Run: `python3 -m unittest discover -s control-plane/tests -v`
+Run: `cd control-plane && python3 -m unittest discover -s tests -v`
 
 Expected: all tests PASS, including existing mutable publisher compatibility tests.
 
@@ -246,7 +246,7 @@ external epoch watermark and revocation ledger snapshot.
 
 - [ ] **Step 2: Confirm failure**
 
-Run: `python3 -m unittest control-plane/tests/test_backup_state.py -v`
+Run: `cd control-plane && python3 -m unittest tests/test_backup_state.py -v`
 
 Expected: FAIL because backup functions are absent.
 
@@ -258,7 +258,7 @@ leases, reserves a higher epoch range, and otherwise exits non-zero without star
 
 - [ ] **Step 4: Run tests and exercise CLI help**
 
-Run: `python3 -m unittest control-plane/tests/test_backup_state.py -v && python3 control-plane/backup_state.py --help`
+Run: `cd control-plane && python3 -m unittest tests/test_backup_state.py -v && python3 backup_state.py --help`
 
 Expected: tests PASS and help exits 0 without exposing local paths or credentials.
 
@@ -285,7 +285,7 @@ for secrets, `Persistent=true`, a stable working directory, and no developer-mac
 
 - [ ] **Step 2: Confirm failure**
 
-Run: `python3 -m unittest control-plane/tests/test_systemd_units.py -v`
+Run: `cd control-plane && python3 -m unittest tests/test_systemd_units.py -v`
 
 Expected: FAIL because units and test do not exist.
 
@@ -301,7 +301,7 @@ collection under the repository's ignored artifact directory.
 Run:
 
 ```bash
-python3 -m unittest discover -s control-plane/tests -v
+(cd control-plane && python3 -m unittest discover -s tests -v)
 git diff --check
 rg -n '/Users/|BEGIN (RSA|OPENSSH) PRIVATE KEY|Bearer [A-Za-z0-9]' control-plane docs/superpowers
 ```
@@ -317,7 +317,7 @@ git commit -m "ops: deploy durable rotation in shadow mode"
 
 ## Final Verification
 
-- [ ] Run `python3 -m unittest discover -s control-plane/tests -v`.
+- [ ] Run `cd control-plane && python3 -m unittest discover -s tests -v`.
 - [ ] Run `git diff --check` and the repository's secret/path scanners.
 - [ ] Start shadow mode on the always-on host for one Telemost endpoint.
 - [ ] Force duplicate scheduler execution and confirm stale fencing rejection.
