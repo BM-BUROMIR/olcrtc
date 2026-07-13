@@ -121,6 +121,14 @@ class ControlPlaneStore:
         finally:
             connection.close()
 
+    @contextlib.contextmanager
+    def read_connection(self) -> Iterator[sqlite3.Connection]:
+        connection = self._connect()
+        try:
+            yield connection
+        finally:
+            connection.close()
+
     def schema_version(self) -> int:
         with self._connect() as connection:
             row = connection.execute("SELECT MAX(version) AS version FROM schema_migrations").fetchone()

@@ -157,6 +157,13 @@ class RotationJournal:
             assert operation is not None
             return operation
 
+    def get(self, operation_id: str) -> Operation:
+        with self.store.read_connection() as connection:
+            operation = self._operation(connection, operation_id)
+        if operation is None:
+            raise JournalError(f"operation {operation_id} not found")
+        return operation
+
     def authorize(
         self,
         operation_id: str,
@@ -221,6 +228,47 @@ class RotationJournal:
             if operation.phase != "publish_authorized":
                 raise InvalidTransition(
                     f"cannot activate operation in phase {operation.phase}"
+                )
+            connection.execute(
+                "UPDATE endpoint_revisions SET state = 'active' WHERE id = ?",
+                (operation.revision_id,),
+            )
+            connection.execute(
+                """
+                UPDATE operations
+                SET phase = 'active', resulting_etag = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (resulting_etag, _timestamp(now), operation_id),
+            )
+            active = self._operation(connection, operation_id)
+            assert active is not None
+            return active
+
+    def reconcile_active(
+        self,
+        operation_id: str,
+        *,
+        resulting_etag: str,
+        lease: Lease,
+        now: dt.datetime,
+    ) -> Operation:
+        if not resulting_etag:
+            raise ValueError("resulting_etag is required")
+        with self.store.transaction() as connection:
+            self.store.assert_current_lease(lease, now=now, connection=connection)
+            operation = self._operation(connection, operation_id)
+            if operation is None:
+                raise JournalError(f"operation {operation_id} not found")
+            if operation.endpoint_id != lease.resource_id:
+                raise OperationConflict("recovery lease belongs to another endpoint")
+            if operation.phase == "active":
+                if operation.resulting_etag != resulting_etag:
+                    raise OperationConflict("active operation manifest changed")
+                return operation
+            if operation.phase != "publish_authorized":
+                raise InvalidTransition(
+                    f"cannot reconcile operation in phase {operation.phase}"
                 )
             connection.execute(
                 "UPDATE endpoint_revisions SET state = 'active' WHERE id = ?",
