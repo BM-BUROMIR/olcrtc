@@ -11,7 +11,6 @@ StateDirectory=olc-control-plane
 WorkingDirectory=/opt/olc
 UMask=0077
 Environment=OLC_ROOT=/opt/olc
-Environment=OLC_ROTATION_CONFIG=/etc/olc-control-plane/managed-rotation.json
 Environment=HTTPS_PROXY=http://127.0.0.1:1082
 Environment=HTTP_PROXY=http://127.0.0.1:1082
 Environment=NO_PROXY=127.0.0.1,localhost
@@ -21,6 +20,7 @@ LoadCredential=telemost.cookies:/etc/olc-control-plane/telemost.cookies
 LoadCredential=known_hosts:/etc/olc-control-plane/known_hosts
 LoadCredential=deployment.json:/etc/olc-control-plane/deployment.json
 LoadCredential=server-base.yaml:/etc/olc-control-plane/server-base.yaml
+LoadCredential=managed-rotation.json:/etc/olc-control-plane/managed-rotation.json
 ExecStart=/opt/olc/control-plane/run-systemd-rotation.sh
 TimeoutStartSec=10min
 NoNewPrivileges=yes

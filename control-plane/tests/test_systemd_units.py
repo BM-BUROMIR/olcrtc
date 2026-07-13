@@ -19,6 +19,7 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn("LoadCredential=ssh_key:", service)
         self.assertIn("LoadCredential=telemost.cookies:", service)
         self.assertIn("LoadCredential=known_hosts:", service)
+        self.assertIn("LoadCredential=managed-rotation.json:", service)
         self.assertNotIn("EnvironmentFile=", service)
         self.assertNotIn("/Users/", service)
 
@@ -34,6 +35,7 @@ class SystemdUnitTest(unittest.TestCase):
         runner = (ROOT / "run-systemd-rotation.sh").read_text()
 
         self.assertIn('source "$CREDENTIALS_DIRECTORY/rotation.env"', runner)
+        self.assertIn('CONFIG=${OLC_ROTATION_CONFIG:-"$CREDENTIALS_DIRECTORY/managed-rotation.json"}', runner)
         self.assertIn('OLC_SSH_KEY_PATH="$CREDENTIALS_DIRECTORY/ssh_key"', runner)
         self.assertIn('OLC_TELEMOST_COOKIES_PATH="$CREDENTIALS_DIRECTORY/telemost.cookies"', runner)
         self.assertIn('OLC_SSH_KNOWN_HOSTS_PATH="$CREDENTIALS_DIRECTORY/known_hosts"', runner)

@@ -4,7 +4,7 @@ set -euo pipefail
 : "${CREDENTIALS_DIRECTORY:?systemd credential directory is required}"
 
 ROOT=${OLC_ROOT:-/opt/olc}
-CONFIG=${OLC_ROTATION_CONFIG:-/etc/olc-control-plane/managed-rotation.json}
+CONFIG=${OLC_ROTATION_CONFIG:-"$CREDENTIALS_DIRECTORY/managed-rotation.json"}
 
 set -a
 # shellcheck disable=SC1090
