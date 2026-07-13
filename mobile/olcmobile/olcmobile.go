@@ -20,8 +20,9 @@ import (
 	_ "golang.org/x/mobile/bind" // ensure gomobile bind sees the mobile tool dependency.
 )
 
+//nolint:gochecknoglobals // gomobile package owns a single process-wide tunnel.
 var (
-	mu        sync.Mutex //nolint:gochecknoglobals // gomobile package owns a single process-wide tunnel.
+	mu        sync.Mutex
 	cancel    context.CancelFunc
 	done      chan struct{}
 	errRun    error
@@ -32,11 +33,15 @@ var (
 	errNotRunning    = errors.New("olcRTC is not running")
 	errStartTimedOut = errors.New("olcRTC start timed out")
 	errStopTimedOut  = errors.New("olcRTC stop timed out")
+	errSOCKSGreeting = errors.New("SOCKS greeting rejected")
+	errSOCKSConnect  = errors.New("SOCKS connect rejected")
+	errSOCKSAddrType = errors.New("SOCKS returned unsupported address type")
+	errHTTPProbe     = errors.New("invalid HTTP probe response")
 )
 
 const defaultStopTimeout = 10 * time.Second
 
-// ai-generated: StartCnc adapts the existing session YAML path to the iOS gomobile API.
+// StartCnc adapts the existing session YAML path to the iOS gomobile API.
 func StartCnc(configYAML, dataDir string) error {
 	if err := stopCurrent(defaultStopTimeout); err != nil {
 		return err
@@ -72,10 +77,13 @@ func StartCnc(configYAML, dataDir string) error {
 	}
 	mu.Unlock()
 	close(localDone)
-	return err
+	if err != nil {
+		return fmt.Errorf("run tunnel session: %w", err)
+	}
+	return nil
 }
 
-// ai-generated: WaitReady waits until the local SOCKS listener from StartCnc accepts TCP connections.
+// WaitReady waits until the local SOCKS listener from StartCnc accepts TCP connections.
 func WaitReady(timeoutMillis int) error {
 	if timeoutMillis <= 0 {
 		return waitReadyOnce()
@@ -84,7 +92,7 @@ func WaitReady(timeoutMillis int) error {
 	deadline := time.Now().Add(time.Duration(timeoutMillis) * time.Millisecond)
 	var sawStart bool
 	for {
-		err, pending := waitReadySnapshot()
+		pending, err := waitReadySnapshot()
 		if pending || !errors.Is(err, errNotRunning) {
 			sawStart = true
 		}
@@ -121,8 +129,11 @@ func ProbeSocks(timeoutMillis int) error {
 	return probeSocksAt(addr, timeout)
 }
 
+//nolint:cyclop // The SOCKS5 reply parser validates every protocol branch inline.
 func probeSocksAt(addr string, timeout time.Duration) error {
-	conn, err := net.DialTimeout("tcp", addr, timeout)
+	ctx, cancelDial := context.WithTimeout(context.Background(), timeout)
+	defer cancelDial()
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("dial SOCKS: %w", err)
 	}
@@ -135,10 +146,11 @@ func probeSocksAt(addr string, timeout time.Duration) error {
 	}
 	greeting := make([]byte, 2)
 	if _, err := io.ReadFull(conn, greeting); err != nil || greeting[0] != 0x05 || greeting[1] != 0x00 {
-		return errors.New("SOCKS greeting rejected")
+		return errSOCKSGreeting
 	}
 	host := "api.ipify.org"
-	request := append([]byte{0x05, 0x01, 0x00, 0x03, byte(len(host))}, []byte(host)...)
+	hostLength := uint8(len(host)) //nolint:gosec // Constant host fits one byte.
+	request := append([]byte{0x05, 0x01, 0x00, 0x03, hostLength}, []byte(host)...)
 	request = append(request, 0x00, 0x50)
 	if _, err := conn.Write(request); err != nil {
 		return fmt.Errorf("write SOCKS connect: %w", err)
@@ -148,7 +160,7 @@ func probeSocksAt(addr string, timeout time.Duration) error {
 		return fmt.Errorf("read SOCKS connect: %w", err)
 	}
 	if reply[0] != 0x05 || reply[1] != 0x00 {
-		return fmt.Errorf("SOCKS connect rejected: reply=%d", reply[1])
+		return fmt.Errorf("%w: reply=%d", errSOCKSConnect, reply[1])
 	}
 	var remaining int
 	switch reply[3] {
@@ -163,7 +175,7 @@ func probeSocksAt(addr string, timeout time.Duration) error {
 	case 0x04:
 		remaining = 16 + 2
 	default:
-		return fmt.Errorf("SOCKS returned unsupported address type: %d", reply[3])
+		return fmt.Errorf("%w: %d", errSOCKSAddrType, reply[3])
 	}
 	if _, err := io.ReadFull(conn, make([]byte, remaining)); err != nil {
 		return fmt.Errorf("read SOCKS address: %w", err)
@@ -176,12 +188,12 @@ func probeSocksAt(addr string, timeout time.Duration) error {
 		return fmt.Errorf("read HTTP probe: %w", err)
 	}
 	if !strings.HasPrefix(status, "HTTP/") {
-		return errors.New("invalid HTTP probe response")
+		return errHTTPProbe
 	}
 	return nil
 }
 
-// ai-generated: Stop cancels the active iOS tunnel session.
+// Stop cancels the active iOS tunnel session.
 func Stop() {
 	_ = stopCurrent(defaultStopTimeout)
 }
@@ -218,11 +230,11 @@ func stopCurrent(timeout time.Duration) error {
 // ai-generated: writeConfig persists the YAML config so relative config paths stay anchored.
 func writeConfig(configYAML, dataDir string) (string, error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
-		return "", err
+		return "", fmt.Errorf("create tunnel data directory: %w", err)
 	}
 	cfgPath := filepath.Join(dataDir, "cnc.yaml")
 	if err := os.WriteFile(cfgPath, []byte(configYAML), 0o600); err != nil {
-		return "", err
+		return "", fmt.Errorf("write tunnel config: %w", err)
 	}
 	return cfgPath, nil
 }
@@ -232,28 +244,28 @@ func loadSessionConfig(cfgPath string) (session.Config, error) {
 	session.RegisterDefaults()
 	f, err := configpkg.Load(cfgPath)
 	if err != nil {
-		return session.Config{}, err
+		return session.Config{}, fmt.Errorf("load tunnel config: %w", err)
 	}
 	scfg := configpkg.Apply(session.Config{}, f)
 	if scfg, err = session.ApplyAuthDefaults(scfg); err != nil {
-		return session.Config{}, err
+		return session.Config{}, fmt.Errorf("apply tunnel auth defaults: %w", err)
 	}
 	scfg = session.ApplyTransportDefaults(scfg)
 	scfg = session.ApplyLivenessDefaults(scfg)
 	if err := session.Validate(scfg); err != nil {
-		return session.Config{}, err
+		return session.Config{}, fmt.Errorf("validate tunnel config: %w", err)
 	}
 	return scfg, nil
 }
 
 // ai-generated: waitReadyOnce returns the current readiness state without waiting.
 func waitReadyOnce() error {
-	err, _ := waitReadySnapshot()
+	_, err := waitReadySnapshot()
 	return err
 }
 
 // ai-generated: waitReadySnapshot reports terminal errors or a pending readiness state.
-func waitReadySnapshot() (error, bool) {
+func waitReadySnapshot() (bool, error) {
 	mu.Lock()
 	addr := socksAddr
 	d := done
@@ -263,18 +275,18 @@ func waitReadySnapshot() (error, bool) {
 
 	if addr == "" {
 		if runErr != nil {
-			return runErr, false
+			return false, runErr
 		}
-		return errNotRunning, false
+		return false, errNotRunning
 	}
 	if canConnect(addr) {
-		return nil, false
+		return false, nil
 	}
 	if !running {
 		if runErr != nil {
-			return runErr, false
+			return false, runErr
 		}
-		return errNotRunning, false
+		return false, errNotRunning
 	}
 
 	select {
@@ -283,17 +295,19 @@ func waitReadySnapshot() (error, bool) {
 		runErr = errRun
 		mu.Unlock()
 		if runErr != nil {
-			return runErr, false
+			return false, runErr
 		}
-		return errNotRunning, false
+		return false, errNotRunning
 	default:
-		return nil, true
+		return true, nil
 	}
 }
 
 // ai-generated: canConnect performs the same readiness probe the Swift extension expects.
 func canConnect(addr string) bool {
-	conn, err := net.DialTimeout("tcp", addr, 200*time.Millisecond)
+	ctx, cancelDial := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancelDial()
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return false
 	}

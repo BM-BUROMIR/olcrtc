@@ -472,8 +472,11 @@ func TestReplyBuffers(t *testing.T) {
 
 func writeSOCKSConnectDomain(t *testing.T, conn net.Conn, host string, port uint16) {
 	t.Helper()
+	if len(host) > 255 {
+		t.Fatalf("SOCKS domain is too long: %d", len(host))
+	}
 	req := make([]byte, 0, 7+len(host))
-	req = append(req, 5, 1, 0, 3, byte(len(host)))
+	req = append(req, 5, 1, 0, 3, uint8(len(host))) //nolint:gosec // Length is bounded above.
 	req = append(req, host...)
 	portBuf := make([]byte, 2)
 	binary.BigEndian.PutUint16(portBuf, port)

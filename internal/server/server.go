@@ -491,8 +491,8 @@ func (s *Server) handleReconnect() {
 	s.reinstallSession(current)
 }
 
-func (s *Server) reinstallSession(dead *smux.Session) bool {
-	return s.reinstallSessionWithReset(dead, false)
+func (s *Server) reinstallSession(dead *smux.Session) {
+	s.reinstallSessionWithReset(dead, false)
 }
 
 func (s *Server) resetAndReinstallSession(dead *smux.Session) bool {
@@ -1209,6 +1209,7 @@ func (s *Server) resetLinkPeer() {
 	}
 }
 
+//nolint:cyclop // Keeps liveness callbacks and stale-session replacement ordering together.
 func (s *Server) startControlLoop(ctx context.Context, sess *smux.Session, stream *smux.Stream) {
 	controlCtx, stop := context.WithCancel(ctx)
 	s.sessMu.Lock()

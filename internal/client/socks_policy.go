@@ -1,10 +1,13 @@
 package client
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"strings"
 )
+
+var errInvalidSOCKSBlockPort = errors.New("invalid socks block port")
 
 // SOCKSBlockPolicy describes local SOCKS destinations rejected at ingress
 // before they can open a tunnel stream.
@@ -24,7 +27,7 @@ func newSOCKSBlockPolicy(cfg SOCKSBlockPolicy) (socksBlockPolicy, error) {
 	p := socksBlockPolicy{}
 	for _, port := range cfg.Ports {
 		if port < 1 || port > 65535 {
-			return socksBlockPolicy{}, fmt.Errorf("invalid socks block port: %d", port)
+			return socksBlockPolicy{}, fmt.Errorf("%w: %d", errInvalidSOCKSBlockPort, port)
 		}
 		if p.ports == nil {
 			p.ports = make(map[int]struct{}, len(cfg.Ports))
