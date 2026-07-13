@@ -38,6 +38,23 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn('OLC_TELEMOST_COOKIES_PATH="$CREDENTIALS_DIRECTORY/telemost.cookies"', runner)
         self.assertIn('OLC_SSH_KNOWN_HOSTS_PATH="$CREDENTIALS_DIRECTORY/known_hosts"', runner)
 
+    def test_shadow_service_waits_for_private_egress(self) -> None:
+        service = (ROOT / "systemd/olc-control-plane-shadow.service").read_text()
+
+        self.assertIn("Requires=olc-control-plane-xray.service", service)
+        self.assertIn("After=network-online.target olc-control-plane-xray.service", service)
+
+    def test_private_egress_service_is_hardened_and_uses_a_credential(self) -> None:
+        service = (ROOT / "systemd/olc-control-plane-xray.service").read_text()
+
+        self.assertIn("User=olc-control-plane-xray", service)
+        self.assertIn("LoadCredential=config.json:", service)
+        self.assertIn("ExecStart=/usr/local/bin/xray run -config $CREDENTIALS_DIRECTORY/config.json", service)
+        self.assertIn("Restart=on-failure", service)
+        self.assertIn("NoNewPrivileges=yes", service)
+        self.assertIn("ProtectSystem=strict", service)
+        self.assertNotIn("/Users/", service)
+
 
 if __name__ == "__main__":
     unittest.main()

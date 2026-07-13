@@ -1,7 +1,8 @@
 [Unit]
 Description=OLC durable control-plane shadow rotation
-After=network-online.target
+After=network-online.target olc-control-plane-xray.service
 Wants=network-online.target
+Requires=olc-control-plane-xray.service
 
 [Service]
 Type=oneshot
