@@ -5,6 +5,9 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
+import pathlib
+import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
@@ -62,6 +65,44 @@ class MemoryImmutableBackend:
             raise ImmutableConflict(f"immutable object changed: {object_key}")
         self.objects[object_key] = blob
         return f"memory://{object_key}"
+
+
+class FilesystemImmutableBackend:
+    def __init__(self, root: str | pathlib.Path) -> None:
+        self.root = pathlib.Path(root)
+        self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(self.root, 0o700)
+
+    def _path(self, object_key: str) -> pathlib.Path:
+        relative = pathlib.PurePosixPath(object_key)
+        if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+            raise ValueError("unsafe immutable object key")
+        return self.root.joinpath(*relative.parts)
+
+    def put_immutable(self, object_key: str, blob: bytes) -> str:
+        target = self._path(object_key)
+        target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        os.chmod(target.parent, 0o700)
+        if target.exists():
+            if target.read_bytes() != blob:
+                raise ImmutableConflict(f"immutable object changed: {object_key}")
+            return target.as_uri()
+
+        temporary = self.root / f".tmp-{uuid.uuid4().hex}"
+        fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            with os.fdopen(fd, "wb") as stream:
+                stream.write(blob)
+                stream.flush()
+                os.fsync(stream.fileno())
+            try:
+                os.link(temporary, target)
+            except FileExistsError:
+                if target.read_bytes() != blob:
+                    raise ImmutableConflict(f"immutable object changed: {object_key}")
+        finally:
+            temporary.unlink(missing_ok=True)
+        return target.as_uri()
 
 
 @dataclass

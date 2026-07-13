@@ -7,7 +7,12 @@ from unittest import mock
 
 from bootstrap import decrypt_subscription, encrypt_subscription
 from device_registry import DeviceRegistry
-from managed_rotation import DeviceEnvelopePublisher, SSHServerActivator, should_rotate
+from managed_rotation import (
+    DeviceEnvelopePublisher,
+    SSHServerActivator,
+    record_shadow_if_configured,
+    should_rotate,
+)
 
 
 UTC = dt.timezone.utc
@@ -144,6 +149,40 @@ class ServerActivatorTest(unittest.TestCase):
         rollback_command = run.call_args_list[-1].args[0][-1]
         self.assertIn("install -o root -g ubuntu -m 640", rollback_command)
         self.assertIn("/var/lib/olc-bypass/rotation/", rollback_command)
+
+
+class ShadowIntegrationTest(unittest.TestCase):
+    def test_disabled_shadow_is_a_noop(self) -> None:
+        self.assertIsNone(
+            record_shadow_if_configured(
+                {},
+                {"generation": 1},
+                now=dt.datetime(2026, 7, 13, tzinfo=UTC),
+            )
+        )
+
+    @mock.patch("managed_rotation.record_shadow_generation")
+    def test_maps_explicit_shadow_config(self, record: mock.Mock) -> None:
+        record.return_value = {"phase": "active", "generation": 1}
+        config = {
+            "runtime_dir": "/private/runtime",
+            "shadow": {
+                "state_db": "/private/state/control-plane.db",
+                "object_root": "/private/state/objects",
+                "user_id": "owner",
+                "device_id": "owner-iphone11",
+                "identity_id": "owner-telemost",
+                "assignment_id": "owner-iphone11-telemost",
+                "endpoint_id": "owner-iphone11-telemost",
+            },
+        }
+        now = dt.datetime(2026, 7, 13, tzinfo=UTC)
+
+        result = record_shadow_if_configured(config, {"generation": 1}, now=now)
+
+        self.assertEqual(result["phase"], "active")
+        self.assertEqual(record.call_args.kwargs["endpoint"].provider, "telemost")
+        self.assertEqual(record.call_args.kwargs["now"], now)
 
 
 if __name__ == "__main__":

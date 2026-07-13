@@ -24,6 +24,7 @@ from envelope import build_envelope
 from room_manager import Deployment, RoomManager
 from rotate import RotationTransaction
 from server_config import render_server_config
+from shadow_runtime import ShadowEndpoint, record_shadow_generation
 from telemost_client import TelemostClient, load_cookie_header
 
 
@@ -314,6 +315,32 @@ def _replace_private_json(path: pathlib.Path, value: dict[str, Any]) -> None:
     os.replace(temporary, path)
 
 
+def record_shadow_if_configured(
+    config: dict[str, Any],
+    envelope: dict[str, Any],
+    *,
+    now: dt.datetime,
+) -> dict[str, Any] | None:
+    shadow = config.get("shadow")
+    if shadow is None:
+        return None
+    endpoint = ShadowEndpoint(
+        user_id=shadow["user_id"],
+        device_id=shadow["device_id"],
+        identity_id=shadow["identity_id"],
+        assignment_id=shadow["assignment_id"],
+        endpoint_id=shadow["endpoint_id"],
+        provider="telemost",
+    )
+    return record_shadow_generation(
+        state_path=shadow["state_db"],
+        object_root=shadow["object_root"],
+        endpoint=endpoint,
+        envelope=envelope,
+        now=now,
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Rotate, probe, and publish managed Telemost bootstrap")
     parser.add_argument("--config", required=True, type=pathlib.Path)
@@ -393,10 +420,12 @@ def main() -> int:
         publish=publish,
     )
     changed = transaction.run(envelope)
+    shadow_result = record_shadow_if_configured(config, envelope, now=now) if changed else None
     print(json.dumps({
         "status": "rotated" if changed else "unchanged",
         "profile": "telemost", "generation": generation,
         "published_devices": len(DeviceRegistry(runtime / "devices.json").publishable("telemost")),
+        "shadow": shadow_result,
     }))
     return 0
 

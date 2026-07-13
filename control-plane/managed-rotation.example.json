@@ -5,6 +5,15 @@
   "olcrtc_binary": "build/olcrtc",
   "ca_bundle": "/etc/ssl/cert.pem",
   "yc_bucket": "olc-bootstrap",
+  "shadow": {
+    "state_db": ".secrets/runtime/control-plane/control-plane.db",
+    "object_root": ".secrets/runtime/control-plane/objects",
+    "user_id": "owner",
+    "device_id": "owner-iphone",
+    "identity_id": "owner-telemost",
+    "assignment_id": "owner-iphone-telemost",
+    "endpoint_id": "owner-iphone-telemost"
+  },
   "server": {
     "host": "203.0.113.10",
     "user": "ubuntu",
