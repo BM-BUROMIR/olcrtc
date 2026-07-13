@@ -33,7 +33,7 @@ confirmed independently from serial output. The iPhone health check recovered at
 ## TestFlight artifact
 
 - Version: `0.1.0`
-- Build: `202607131711`
+- Build: `202607131726`
 - App Store Connect processing state: `VALID`
 - Minimum iOS version: `16.0`
 - Included managed profiles: Telemost and WB
