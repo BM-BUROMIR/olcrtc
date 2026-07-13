@@ -20,8 +20,17 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn("LoadCredential=telemost.cookies:", service)
         self.assertIn("LoadCredential=known_hosts:", service)
         self.assertIn("LoadCredential=managed-rotation.json:", service)
+        self.assertIn("ExecStartPost=/opt/olc/control-plane/backup-systemd-state.sh", service)
         self.assertNotIn("EnvironmentFile=", service)
         self.assertNotIn("/Users/", service)
+
+    def test_backup_runner_is_private_verified_and_retained(self) -> None:
+        runner = (ROOT / "backup-systemd-state.sh").read_text()
+
+        self.assertIn("umask 077", runner)
+        self.assertIn('backup_state.py" backup', runner)
+        self.assertIn("-mtime +14 -delete", runner)
+        self.assertNotIn("/Users/", runner)
 
     def test_shadow_timer_is_persistent_and_jittered(self) -> None:
         timer = (ROOT / "systemd/olc-control-plane-shadow.timer").read_text()

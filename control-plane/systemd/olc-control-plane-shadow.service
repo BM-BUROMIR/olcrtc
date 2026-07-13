@@ -22,6 +22,7 @@ LoadCredential=deployment.json:/etc/olc-control-plane/deployment.json
 LoadCredential=server-base.yaml:/etc/olc-control-plane/server-base.yaml
 LoadCredential=managed-rotation.json:/etc/olc-control-plane/managed-rotation.json
 ExecStart=/opt/olc/control-plane/run-systemd-rotation.sh
+ExecStartPost=/opt/olc/control-plane/backup-systemd-state.sh
 TimeoutStartSec=10min
 NoNewPrivileges=yes
 PrivateTmp=yes
