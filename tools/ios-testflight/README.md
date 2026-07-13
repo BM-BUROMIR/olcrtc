@@ -31,6 +31,11 @@ curl-based ASC API flow by default. Set `OLC_IOS_USE_FASTLANE_SIGH=1` to fall ba
 `sigh`. `archive` builds an App Store archive and IPA. `beta` builds and uploads the IPA to
 TestFlight.
 
+`archive` and `beta` rebuild `OlcMobile.xcframework` with stripped Go symbols and trim paths from a
+neutral build root, then reject the framework if it contains the repository path, home directory,
+or temporary paths. This requires `gomobile` in `PATH` and prevents developer-machine paths from
+shipping in the IPA.
+
 ## Default Apple identifiers
 
 | Setting | Default |

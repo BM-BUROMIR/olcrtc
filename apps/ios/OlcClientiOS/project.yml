@@ -12,7 +12,7 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1,2"
-    OTHER_LDFLAGS: "-ld_classic -lresolv"
+    OTHER_LDFLAGS: "-lresolv"
 packages:
   Tun2SocksKit:
     url: https://github.com/EbrahimTahernejad/Tun2SocksKit

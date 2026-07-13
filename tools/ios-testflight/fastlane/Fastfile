@@ -107,10 +107,15 @@ def generate_xcode_project
   end
 end
 
-def prepare_ios_project
+def rebuild_mobile_framework
+  sh(File.join(repo_root, "apps", "ios", "build-olc-mobile.sh"))
+end
+
+def prepare_ios_project(rebuild_mobile: false)
   apply_identifiers
   generate_profiles
   verify_builtin_profiles
+  rebuild_mobile_framework if rebuild_mobile
   generate_xcode_project
 end
 
@@ -770,7 +775,7 @@ platform :ios do
 
   desc "Build App Store archive and IPA"
   lane :archive do
-    prepare_ios_project
+    prepare_ios_project(rebuild_mobile: true)
     if manual_signing?
       fetch_app_store_profiles
       configure_manual_signing
@@ -780,7 +785,7 @@ platform :ios do
 
   desc "Build and upload an internal TestFlight build"
   lane :beta do
-    prepare_ios_project
+    prepare_ios_project(rebuild_mobile: true)
     if manual_signing?
       fetch_app_store_profiles
       configure_manual_signing
