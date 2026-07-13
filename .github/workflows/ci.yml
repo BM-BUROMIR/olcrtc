@@ -1,17 +1,23 @@
 name: CI
 
 on:
-  push:
-  pull_request:
-    branches: ["main", "master"]
-  schedule:
-    # Nightly full E2E - 00:17 UTC (03:17 MSK)
-    - cron: "17 0 * * *"
   workflow_dispatch:
+    inputs:
+      suite:
+        description: Checks to run
+        required: true
+        default: fast
+        type: choice
+        options:
+          - fast
+          - full
+          - providers
+          - soak
 
 jobs:
   test:
     name: Test
+    if: inputs.suite == 'fast' || inputs.suite == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,6 +34,7 @@ jobs:
 
   coverage:
     name: Coverage
+    if: inputs.suite == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,6 +51,7 @@ jobs:
 
   race:
     name: Test (-race)
+    if: inputs.suite == 'full'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -61,6 +69,7 @@ jobs:
 
   real-e2e:
     name: Real E2E (Providers x Transports)
+    if: inputs.suite == 'providers'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -85,9 +94,7 @@ jobs:
 
   stress-soak:
     name: Real E2E Stress Soak (Nightly)
-    # Long-form stress over real carriers: only on schedule or manual
-    # dispatch. Push and PR runs stay fast.
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: inputs.suite == 'soak'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -118,6 +125,7 @@ jobs:
 
   lint:
     name: Lint
+    if: inputs.suite == 'fast' || inputs.suite == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -136,6 +144,7 @@ jobs:
 
   build-cli:
     name: Build CLI (Binaries)
+    if: inputs.suite == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -161,6 +170,7 @@ jobs:
 
   build-android:
     name: Build Android (AAR)
+    if: inputs.suite == 'full'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -197,7 +207,7 @@ jobs:
 
   nightly-soak:
     name: Nightly Soak (All Carriers × Transports)
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: inputs.suite == 'soak'
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
