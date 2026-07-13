@@ -9,8 +9,11 @@ import Foundation
 final class PacketTunnelProvider: NEPacketTunnelProvider {
     private let statsQueue = DispatchQueue(label: "com.oxi717.olc.tunnel.stats")
     private let bootstrapQueue = DispatchQueue(label: "com.oxi717.olc.tunnel.bootstrap")
+    private let healthQueue = DispatchQueue(label: "com.oxi717.olc.tunnel.health")
     private var statsTimer: DispatchSourceTimer?
     private var bootstrapTimer: DispatchSourceTimer?
+    private var healthTimer: DispatchSourceTimer?
+    private var consecutiveHealthFailures = 0
     private var bootstrapRefreshInFlight = false
 
     // лог в app-group (читается из приложения для диагностики физического устройства)
@@ -33,6 +36,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     override func startTunnel(options: [String: NSObject]?) async throws {
         dbg("=== startTunnel ===")
         stopStatsLoop()
+        stopHealthLoop()
         let proto = protocolConfiguration as? NETunnelProviderProtocol
         let providerConfiguration = proto?.providerConfiguration ?? [:]
         let managed = ManagedTunnelDescriptor(providerConfiguration: providerConfiguration)
@@ -140,6 +144,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             self.stopStatsLoop()
         }
         startStatsLoop()
+        startHealthLoop()
         if let managed, let activeGeneration {
             startManagedBootstrapLoop(managed, activeGeneration: activeGeneration)
         }
@@ -193,8 +198,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
                         candidateGeneration: candidate.generation
                     ) else { return }
                     self.dbg("managed bootstrap update profile=\(managed.profileID) generation=\(candidate.generation) restarting")
-                    self.stopManagedBootstrapLoop()
-                    self.cancelTunnelWithError(
+                    self.restartTunnel(
                         NSError(
                             domain: "com.oxi717.olc.bootstrap",
                             code: 2,
@@ -230,6 +234,57 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     private func stopStatsLoop() {
         statsTimer?.cancel()
         statsTimer = nil
+    }
+
+    private func startHealthLoop() {
+        stopHealthLoop()
+        consecutiveHealthFailures = 0
+        let timer = DispatchSource.makeTimerSource(queue: healthQueue)
+        timer.schedule(
+            deadline: .now() + .seconds(20),
+            repeating: .seconds(30),
+            leeway: .seconds(3)
+        )
+        timer.setEventHandler { [weak self] in
+            guard let self else { return }
+            var probeError: NSError?
+            OlcmobileProbeSocks(10_000, &probeError)
+            if let probeError {
+                self.consecutiveHealthFailures += 1
+                self.dbg("tunnel health failed count=\(self.consecutiveHealthFailures) error=\(probeError.localizedDescription)")
+                if self.consecutiveHealthFailures >= 3 {
+                    self.dbg("tunnel health exhausted; restarting")
+                    self.restartTunnel(
+                        NSError(
+                            domain: "com.oxi717.olc.health",
+                            code: 3,
+                            userInfo: [NSLocalizedDescriptionKey: "tunnel data path unavailable"]
+                        )
+                    )
+                }
+                return
+            }
+            if self.consecutiveHealthFailures > 0 {
+                self.dbg("tunnel health recovered after=\(self.consecutiveHealthFailures)")
+            }
+            self.consecutiveHealthFailures = 0
+        }
+        healthTimer = timer
+        timer.resume()
+    }
+
+    private func stopHealthLoop() {
+        healthTimer?.cancel()
+        healthTimer = nil
+    }
+
+    private func restartTunnel(_ error: NSError) {
+        stopManagedBootstrapLoop()
+        stopStatsLoop()
+        stopHealthLoop()
+        Socks5Tunnel.quit()
+        OlcmobileStop()
+        cancelTunnelWithError(error)
     }
 
     // TCP-probe готовности SOCKS listener
@@ -280,6 +335,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         dbg("stopTunnel reason=\(reason.rawValue)")
         stopManagedBootstrapLoop()
         stopStatsLoop()
+        stopHealthLoop()
         Socks5Tunnel.quit()
         OlcmobileStop()
     }

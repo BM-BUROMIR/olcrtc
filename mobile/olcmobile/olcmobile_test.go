@@ -1,7 +1,10 @@
 package olcmobile
 
 import (
+	"bufio"
 	"errors"
+	"io"
+	"net"
 	"testing"
 	"time"
 )
@@ -77,4 +80,46 @@ func TestStopCurrentTimesOut(t *testing.T) {
 		t.Fatal("stopCurrent did not call cancel")
 	}
 	close(doneCh)
+}
+
+func TestProbeSocksAtChecksEndToEndHTTP(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go func() {
+		conn, acceptErr := listener.Accept()
+		if acceptErr != nil {
+			return
+		}
+		defer func() { _ = conn.Close() }()
+		greeting := make([]byte, 3)
+		_, _ = io.ReadFull(conn, greeting)
+		_, _ = conn.Write([]byte{0x05, 0x00})
+		head := make([]byte, 5)
+		_, _ = io.ReadFull(conn, head)
+		hostAndPort := make([]byte, int(head[4])+2)
+		_, _ = io.ReadFull(conn, hostAndPort)
+		_, _ = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0, 80})
+		request, _ := bufio.NewReader(conn).ReadString('\n')
+		if request != "GET / HTTP/1.1\r\n" {
+			return
+		}
+		_, _ = conn.Write([]byte("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok"))
+	}()
+
+	if err := probeSocksAt(listener.Addr().String(), 2*time.Second); err != nil {
+		t.Fatalf("probeSocksAt() error = %v", err)
+	}
+}
+
+func TestProbeSocksRequiresRunningTunnel(t *testing.T) {
+	resetGlobals(t)
+	t.Cleanup(func() { resetGlobals(t) })
+
+	if err := ProbeSocks(100); !errors.Is(err, errNotRunning) {
+		t.Fatalf("ProbeSocks() error = %v, want %v", err, errNotRunning)
+	}
 }
