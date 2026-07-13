@@ -1,285 +1,451 @@
-# Provider identities for managed Telemost and WB profiles
+# Managed provider identities for Telemost and WB
 
 Date: 2026-07-13
-Status: approved design
+Status: reviewed design
 
 ## Goal
 
-Replace provider-specific static credentials with a managed identity layer that can:
+Build a production control plane that keeps Telemost and WB tunnel profiles usable without manual
+configuration on each device. The first release uses operator-provisioned owner credentials and a
+private device cohort. Later releases may add provider sign-in after the required provider flows are
+proved on physical iOS devices.
 
-- keep the owner's Telemost and WB rooms healthy for the current shared-testing cohort;
-- let each user later sign in to Telemost and WB from OLC and receive independent rooms;
-- rotate rooms and publish encrypted per-device bootstrap objects without exposing provider credentials;
-- isolate authorization failures so one user or provider cannot break other profiles.
+The system must:
 
-The first rollout keeps the owner's rooms shared with explicitly authorized testers. Per-user provider
-login is the target state and uses the same data model and control-plane interfaces from the start.
+- isolate provider credentials from tunnel clients and edge-server configuration;
+- give every installed device its own enrollment, tunnel credential, room/session, and revocation
+  boundary;
+- rotate rooms without invalidating the last known-good generation;
+- survive scheduler restart, duplicate workers, host reboot, and object-storage retries;
+- support staged migration from the owner's provider identity to a user's own identity.
 
-## Current findings
+## Proven facts and blocked assumptions
 
-- Telemost room creation uses an authenticated Yandex web session stored as cookies. The existing
-  managed rotation already creates and rotates rooms from this session.
-- WB uses an account bearer to create or own rooms and to exchange a room ID for LiveKit
-  `roomToken` and `serverUrl` credentials.
-- The current WB bearer was validated against the live `connection-details` endpoint and returned
-  usable credentials. It is not an expiring JWT and must be validated against the API rather than by
-  decoding an `exp` claim.
-- A WB guest can register and join an existing public room, but guest authorization is not a valid
-  substitute for owner room creation. Managed owner profiles must never silently fall back to guest.
-- An earlier verified WB owner flow skipped guest registration and guest join, then called
-  `connection-details` with the owner bearer. The current source must be brought back to that
-  behavior before managed WB publication is enabled.
+- Telemost room creation works with an authenticated Yandex cookie jar. Reusing rooms after repeated
+  restarts can leave stale SFU peers, so each active device endpoint uses a fresh room.
+- The current WB owner bearer successfully obtains `roomToken` and `serverUrl` for an existing room
+  through `connection-details`. Owner-authenticated room creation has not been proved.
+- A WB guest can join an existing public room but cannot create an owner room. Managed WB profiles
+  never fall back to guest mode.
+- A usable OAuth-style callback is not known for either provider. `ASWebAuthenticationSession`,
+  WB phone/OTP, and Telemost cookie transfer remain discovery work, not release dependencies.
+- Yandex sessions are sensitive to source-IP and anti-fraud changes. Telemost automation requires a
+  dedicated account and a stable, tested non-RU egress.
+
+The first WB release therefore uses an operator-created room and the verified owner
+`connection-details` path. Managed WB room creation is enabled only after its live API contract is
+captured and repeatedly verified without committing credentials or raw responses.
+
+## Runtime cardinality
+
+A provider identity is an account-level authorization source. It can own many device endpoints, but
+an endpoint is never shared by simultaneously active devices.
+
+```text
+ProviderIdentity 1 --- N ProfileAssignment 1 --- N DeviceEndpoint
+                              |
+                              +--- N EndpointRevision --- N ProfileGeneration
+```
+
+The owner's account may authorize both the owner's and Malyutin's devices, but each device receives
+a separate provider room, server unit, channel, and tunnel credential. This avoids peer matching
+conflicts and makes revocation independent. Reusing one room is permitted only as an explicitly
+labelled single-device diagnostic mode.
 
 ## Domain model
 
-### User
-
-A person allowed to enroll devices and provider identities.
+### User and Device
 
 ```text
 User
   id                  stable opaque identifier
   display_name        non-secret operator label
   status              active | disabled
-```
 
-### Device
-
-An installed OLC instance. Existing per-device bootstrap encryption remains the delivery boundary.
-
-```text
 Device
   id
   user_id
-  enabled
-  allowed_profiles
-  bootstrap_key
+  status              pending | active | revoked
+  public_key
+  enrolled_at
+  last_seen_at
+  highest_epoch_by_profile
 ```
 
-### ProviderIdentity
+No bootstrap decryption key or secret URL is packaged in the IPA. The bundle contains only a
+non-secret rendezvous URL on a carrier domain verified to be reachable before VPN startup. On first
+launch, OLC creates a Secure Enclave P-256 key shared with the app and tunnel extension through a
+dedicated ThisDeviceOnly Keychain access group. A single-use, short-lived enrollment grant is
+transferred out of band as a QR code or universal link.
 
-An independently managed login to one external carrier.
+Enrollment accepts the attested public key and nonce, verifies a challenge signature, and binds the
+grant to the public-key hash, `user_id`, `device_id`, allowed providers, expiry, and one-time
+consumption. Every later rendezvous request carries a fresh nonce and DPoP-style signature.
+
+### ProviderIdentity and CredentialBundle
 
 ```text
 ProviderIdentity
   id
   user_id
   provider            telemost | wbstream
-  credential_ref      reference into SecretStore
+  credential_ref
+  credential_revision
   status              active | reauth_required | disabled
+  operational_health  healthy | transient_failure | permission_denied |
+                      account_challenged | provider_contract_changed
   last_validated_at
-  last_error_code      classified, non-secret error
-  current_generation
-  current_room_ref
+  last_error_code
+  row_version
+
+CredentialBundle
+  schema_version
+  provider
+  secret_payload       encrypted provider-specific primary credential schema
+  acquired_at
+  validated_at
+  expires_at           optional
+  refresh_material     optional encrypted field
+  provider_metadata    allowlisted, non-secret fields only
 ```
 
-There is at most one active identity per `(user_id, provider)` in the first production version.
+For Telemost, `secret_payload` is the minimized cookie jar; for WB it is the owner bearer. Unknown
+fields are rejected rather than stored.
 
-### ManagedProfile
+There is at most one active identity per `(user_id, provider)` in the first release. Transient
+health is separate from authorization state. A 401 or 403 becomes `reauth_required` only when the
+provider-specific endpoint and sanitized error code confirm credential rejection.
 
-A provider room and tunnel configuration published to a user's authorized devices.
+### Assignment, endpoint, and generation
 
 ```text
-ManagedProfile
+ProfileAssignment
   id
   identity_id
+  user_id
+  device_id
+  state               pending | active | migrating | retired
+  valid_from
+  valid_until
+  migration_id
+  row_version
+
+IdentityGrant
+  id
+  identity_id
+  grantee_user_id
+  grantee_device_id    optional narrowing
+  scopes
+  expires_at
+  revoked_at
+
+DeviceEndpoint
+  id
+  assignment_id
   provider
-  room
+  state               active | migrating | retired
+  row_version
+
+EndpointRevision
+  id
+  endpoint_id
+  room_ref
+  server_unit
   channel
-  tunnel_key
-  transport
+  tunnel_credential_ref
+  state               preparing | publish_authorized | active | draining | failed | retired
+  provider_expires_at
+  fencing_token
+
+ProfileGeneration
+  id
+  revision_id
+  epoch
   generation
+  object_key
+  content_hash
+  state               preparing | active | draining | failed | retired
   issued_at
   expires_at
+  acknowledged_at
 ```
 
-Provider credentials are never fields of `ManagedProfile` and never enter a client bootstrap.
+An active cross-user `IdentityGrant` is required before an assignment can reference another user's
+identity. Rotation creates a new endpoint revision, not a second logical endpoint. Identity
+migration may temporarily create two logical endpoints for the same device/provider, one per
+assignment, until the shared assignment is retired.
+
+The client profile contains only provider transport coordinates and its device-scoped tunnel
+credential. Provider bearers, cookie jars, refresh material, and master keys never enter profiles,
+edge command lines, systemd unit text, or the IPA.
 
 ## Provider adapter contract
 
-Both providers implement the same control-plane boundary:
-
 ```text
-begin_login(user) -> LoginChallenge
-complete_login(challenge, response) -> credential_ref
 validate_identity(identity) -> IdentityHealth
+refresh_identity(identity) -> CredentialBundle | NoRefreshAvailable
+use_existing_room(identity, room_ref) -> ProviderRoom
 create_room(identity) -> ProviderRoom
-issue_server_credentials(identity, room) -> ServerCredentials
-revoke(identity)
+issue_server_credentials(identity, room, participant) -> ServerCredentials
+provider_revoke(identity) -> RevocationResult
 ```
 
-The adapter returns typed errors such as `authorization_expired`, `authorization_rejected`,
-`provider_unavailable`, `room_expired`, and `rate_limited`. Raw HTTP bodies, cookies, bearer tokens,
-phone numbers, and one-time codes are not written to application logs.
+`create_room` is capability-gated per provider. WB starts with `use_existing_room`; Telemost starts
+with the existing proved create-room API. Server credentials define audience, participant identity,
+expiry, and refresh behavior. If reconnect needs fresh credentials, an edge process uses a
+mutually-authenticated, endpoint-scoped control-plane API; it never stores the provider identity.
 
-### Telemost adapter
+Adapters accept response cookie updates and atomically replace a credential bundle after validation.
+They classify errors by provider, operation, HTTP status class, and allowlisted provider error code.
+Raw exception strings, URLs, headers, response bodies, phone numbers, cookies, and tokens are never
+passed to logs.
 
-- Stores an authenticated Yandex web-session cookie jar in `SecretStore`.
-- Creates rooms through the existing Telemost conferences API.
-- Treats TLS, DNS, timeout, and 5xx failures as transient and retries them with bounded backoff.
-- Treats 401/403 as `reauth_required`; it does not create a guest identity.
-- Rotates before the known room expiry window and uses the existing activate, probe, publish, commit
-  transaction.
+The first WB canary uses an operator-provisioned room inventory. Each room is owner-validated,
+atomically reserved to one endpoint, and never concurrently reused. A low-watermark alert requests
+replenishment; exhausted inventory blocks WB enrollment and rotation rather than reusing a room.
+WB remains canary-grade, not production-ready, until proved `create_room` can replenish this
+inventory automatically and recover without an operator.
 
-### WB adapter
+WB server and device participants are explicit: the edge obtains an owner `connection-details`
+credential for its participant, while the device obtains a short-lived guest participant credential
+for that existing room through the authenticated control plane. Guest registration/join is allowed
+only for the device participant and never substitutes for owner authorization or room creation. Both
+credential lifetimes, reconnect issuance, and participant uniqueness are recorded by the WB
+live-contract test before canary publication.
 
-- Stores the WB Stream account bearer in `SecretStore`.
-- Creates rooms through the owner room endpoint using the owner bearer.
-- Exchanges the room ID for `roomToken` and `serverUrl` using the owner bearer.
-- Does not call guest registration or guest join for an owner-managed profile.
-- Uses guest mode only for an explicitly configured unmanaged diagnostic profile, never as fallback.
-- Validates the bearer against WB Stream API behavior because the current token format has no `exp`
-  claim.
+## Login discovery and future login protocol
 
-## Login experience
+The first release has no in-app provider login. Credentials are provisioned by the operator into
+SecretStore and validated before activation.
 
-OLC exposes separate `Sign in to Telemost` and `Sign in to WB` commands. Provider login is optional
-while a user is assigned to the owner's shared profile.
+Each future provider login is a blocking discovery milestone. A physical-device proof must record:
 
-### Primary browser flow
+- the provider-controlled authorization entry point and exact callback ownership;
+- credential exchange, refresh, expiry, logout, and provider-side revocation behavior;
+- repeated operation from the production control-plane egress over several days;
+- the minimum credential scope required for room creation and reconnect.
 
-1. OLC requests a short-lived login challenge from the control-plane.
-2. OLC opens the provider login in `ASWebAuthenticationSession`.
-3. The user authenticates only on the provider-controlled page.
-4. A verified callback completes the challenge.
-5. The control-plane stores the resulting provider credential and returns only identity status.
+Only then may OLC expose that login method. A browser flow requires a 256-bit state, PKCE where
+supported, exact redirect scheme/host/path validation, provider/issuer validation, and a
+device-authenticated completion. The stored challenge secret is hashed and transitions atomically:
 
-The callback contains an opaque one-time code, not a bearer or cookie jar. Challenges expire after
-five minutes and can be consumed once.
+```text
+created -> provider_pending -> consuming -> consumed | expired | cancelled
+```
 
-### Fallback flow
+Older challenges are superseded, attempts are bounded, and account identity is confirmed before a
+credential replaces the previous revision.
 
-WB may use a versioned phone and one-time-code adapter if no usable browser callback is available.
-The phone number and code are accepted only for the active challenge, held in memory for the request,
-and never persisted or logged. The adapter can be disabled remotely when WB changes its private API.
+WB phone/OTP remains an optional experiment. It must bind the exact provider pre-auth session,
+device, user, and normalized phone hash; enforce send and verification limits, resend cooldown,
+generic anti-enumeration responses, short expiry, atomic consumption, and a remote kill switch.
 
-If Telemost does not expose a usable callback, its fallback is an isolated `WKWebView` that loads
-only the provider login. Native code does not receive form fields or passwords. After the user is
-authenticated, OLC exports the resulting Yandex session cookies once over authenticated TLS to the
-control-plane, waits for live credential validation, and clears the isolated web data store. OLC
-does not ask the user to copy cookies or paste tokens.
+Telemost `WKWebView` cookie transfer remains a high-risk experiment. It requires a non-persistent
+data store, navigation allowlists, an exact cookie allowlist by name/domain/path/security/expiry,
+rejection of third-party or unexpected cookies, bounded payloads, immediate local clearing, and
+successful validation from production egress. If a narrowly scoped jar is insufficient, this flow
+requires explicit consent and is not enabled for the private production cohort.
 
-## Shared owner rollout
+## Durable control plane
 
-Initially the owner has one active Telemost identity and one active WB identity. The owner and
-Malyutin devices are both authorized for profiles generated from these identities.
+The scheduler runs on an always-on host before managed profiles are enabled. Telemost uses stable
+non-RU egress and a dedicated provider account. Host migration is rehearsed without changing egress
+unexpectedly.
 
-- Each device receives an independently encrypted bootstrap object.
-- Disabling a device stops future publication for that device without rotating credentials for all
-  other devices.
-- Provider credentials remain server-side and are not shared with Malyutin's device.
-- When Malyutin later enrolls his own identity, only his device-to-profile assignments change. The
-  owner's profiles and devices continue without interruption.
+State is stored in SQLite WAL mode with foreign keys and transactional migrations. One scheduler
+owns a durable queue with bounded worker concurrency and provider rate budgets. Every identity or
+endpoint mutation acquires a lease with TTL and monotonically increasing fencing token. Workers use
+idempotency keys and compare-and-swap `row_version`; a stale worker cannot activate or publish.
 
-## Rotation and server processes
+Each server process has a unique endpoint-derived name and private config. Endpoint lifecycle keeps
+candidate and previous server generations alive during an overlap window. Provider and server
+side-effects use forward recovery; they are never described as transactionally rolled back.
+The edge activator atomically stores the highest fencing token per endpoint and rejects lower tokens
+for install, restart, and retire operations.
 
-Each active identity has an independent rotation state and server activation unit. A failed WB
-rotation cannot roll back a successful Telemost profile or another user's room.
+## Publication protocol
 
-The transaction order is:
+Encrypted profile objects are immutable:
 
-1. validate provider identity;
-2. ensure or create a provider room;
-3. render a complete server candidate;
-4. activate and wait for a stable server process;
-5. run provider connection, HTTPS, and bounded 1 MiB probes;
-6. publish encrypted objects for every required authorized device;
-7. commit generation and room state.
+```text
+devices/<device>/profiles/<provider>/generations/<epoch>-<generation>.olcb
+devices/<device>/profiles/<provider>/manifest.olcm
+```
 
-Publication or commit failure restores published objects and server configuration. Authorization
-failure stops before activation and changes the identity to `reauth_required`.
+Generation encryption uses ephemeral P-256 ECDH, HKDF-SHA256, and AES-256-GCM with device ID, key ID,
+epoch, generation, and content hash as AAD. The manifest uses canonical JSON and is signed by a
+dedicated control-plane P-256 key; it includes signing and encryption key IDs, fencing token, epoch,
+generation, hash, expiry, and previous generation. It is updated through a strongly consistent
+publication gateway only after candidate activation and probes pass. The gateway atomically rejects
+a fencing token below its per-profile watermark; object storage is payload storage, not the fencing
+authority. Clients reject a lower `(epoch, generation)` than the highest accepted value for the same
+`(device_id, provider)` stream, verify the signature and referenced hash,
+and atomically persist anti-replay state in the shared ThisDeviceOnly Keychain access group before
+activation.
 
-Server processes use stable identity-derived names and separate private configuration files. They do
-not embed provider credentials in command lines or systemd unit text.
+Publication status and retries are per device. One offline or broken device does not block another
+device's generation. The old revision remains draining until the new generation is acknowledged or
+the bounded grace period expires. Immutable objects are retained for at least the maximum client
+cache lifetime plus 24 hours.
 
-## Secret storage
+The sequence is:
 
-`SecretStore` is an interface separate from identity metadata. The first implementation uses
-AES-256-GCM envelope encryption with a host master key supplied by macOS Keychain or a systemd
-credential. The master key, encrypted credential blobs, and decrypted runtime files are excluded
-from git.
+1. acquire endpoint lease and fencing token and persist an idempotent operation journal row;
+2. validate or refresh the provider identity;
+3. reserve a fresh provider room or fail without changing the active revision;
+4. render and activate a candidate server;
+5. run provider, HTTPS, and complete 1 MiB probes;
+6. write an immutable encrypted generation;
+7. fenced-CAS the revision to `publish_authorized`, then submit manifest CAS to the publication
+   gateway, which atomically advances its fencing watermark;
+8. reconcile the visible manifest into committed state and mark the old revision draining;
+9. retire the old server after acknowledgement or grace expiry.
 
-Requirements:
+The manifest is cutover source of truth after CAS. The journal stores operation ID, expected and
+resulting ETags, revision, hash, and fencing token before external effects. On response loss or
+crash, a reconciler reads and verifies the gateway manifest. If it matches the authorized revision,
+it completes the DB commit even if a newer lease now exists; a revision visible in a valid manifest
+is never stopped as unreferenced. Otherwise it leaves the previous revision active and retires the
+candidate. Crashes between every pair of steps are recovered idempotently.
 
-- authenticated encryption with a unique nonce per write;
-- identity and provider bound as associated data;
-- atomic writes with restrictive ownership and mode;
-- no decrypted credentials in logs, crash reports, bootstrap objects, or test artifacts;
-- explicit credential deletion on identity revoke;
-- startup failure when the master key is unavailable rather than plaintext fallback.
+A device acknowledgement is authenticated and bound to endpoint, epoch, generation, and hash. It is
+accepted only after the device activates the VPN and completes an end-to-end IP, HTTPS, and download
+probe through that revision. Fetch or decryption alone cannot retire the old revision.
 
-## Error handling and user state
+## Revocation and migration
 
-- `active`: recent validation succeeded and rotation may proceed.
-- `reauth_required`: provider returned an authentication rejection. Existing cached client bootstrap
-  remains available until its expiry, but no new generation is published.
-- `disabled`: operator or user revoked the identity; its server process is stopped and future
-  publication is disabled.
-- Transient provider failures leave identity status unchanged, retry with bounded backoff, and emit a
-  non-secret operational alert.
-- Reauthentication replaces credentials atomically, validates them, then resumes rotation. Invalid
-  new credentials do not overwrite the last known credential.
+Ordinary device removal revokes enrollment, tombstones its manifest, rejects future authenticated
+fetches, and stops its endpoint. Because credentials are device-scoped, other devices do not rotate.
+The maximum control-plane revocation target is five minutes. A compromised-device action also
+expires the endpoint immediately and rotates any legacy shared tunnel key before remaining devices
+are considered safe.
 
-OLC shows provider status and a `Sign in again` command. It does not display raw provider errors or
-technical credentials.
+Identity actions are distinct:
 
-## Security boundaries
+- `disable`: stop scheduling and endpoints;
+- `local_delete`: cryptographically erase local credential material and runtime copies;
+- `provider_revoke`: attempt provider logout or token invalidation and record only a redacted result.
 
-- The iOS app receives tunnel configuration, never WB/Yandex credentials.
-- A bootstrap key authorizes one device and one allowed profile set.
-- Login challenges bind user, provider, device, nonce, and expiry.
-- Control-plane administrative APIs require authenticated enrollment and enforce user ownership.
-- Rate limits apply per user, provider, device, and source address.
-- Provider response bodies are sanitized before persistence or reporting.
-- Shared owner access is explicit in device policy and can be revoked independently.
+If the provider has no revocation endpoint, the UI and runbook state the residual risk. Backups age
+out encrypted revoked records under the retention policy; restoring a backup cannot lower credential
+revision or publication epoch.
 
-## Verification
+Migration from owner identity to a personal identity is staged:
 
-### Automated tests
+```text
+pending -> dual-published -> device-verified -> preferred-personal -> shared-retired
+```
 
-- provider adapter contract tests for success and typed errors;
-- WB regression proving owner flow never calls guest registration or guest join;
-- Telemost and WB `reauth_required` transitions on 401/403;
-- transient retry tests that do not rotate or disable an identity;
-- SecretStore encryption, associated-data mismatch, tamper rejection, and atomic replacement;
-- one-time login challenge expiry and replay rejection;
-- per-user and per-device authorization isolation;
-- rotation rollback ordering and generation monotonicity;
-- log and artifact scans for credentials and developer-machine paths.
+Each device acknowledges the personal generation independently. The shared assignment remains
+available through a grace window and can be restored until retirement.
 
-### Live verification
+## Secret storage and disaster recovery
 
-For each provider:
+SecretStore uses versioned AES-256-GCM envelopes with a random per-record data-encryption key wrapped
+twice: by the online non-exportable Keychain/KMS KEK and by an offline recovery KEK in a separate
+failure domain. Each envelope records algorithm, key IDs, random nonce,
+credential revision, and identity/provider/revision associated data. Rotation rewraps data keys
+online; retired wrapping keys remain only for the documented recovery window.
 
-1. authenticate the owner identity;
-2. create a fresh room and publish the owner's profile;
-3. connect a physical iPhone 11 through the managed profile;
-4. run ten rounds of public IP, HTTPS page, and complete 1 MiB download probes;
-5. restart only the provider server and verify automatic recovery;
-6. force room rotation and verify the device fetches the next generation;
-7. authorize a second device against the shared owner profile and repeat a bounded smoke test;
-8. invalidate a test credential and verify `reauth_required` without guest fallback or impact on the
-   other provider.
+Operator provisioning uses a privileged local command with a separate admin role and MFA. It reads
+credentials only from TTY or a protected file descriptor, never argv or environment, encrypts
+immediately, clears staging data, and emits only a redacted audit event.
 
-## Rollout
+Decrypted runtime files are restrictive, short-lived, and removed after process shutdown.
+Production diagnostics that print provider responses are excluded from packaging. HTTP boundaries
+map failures to allowlisted structured fields: provider, operation, status class, internal code,
+retryability, request ID, and credential fingerprint.
 
-1. Restore and verify the WB owner credential path, add WB to managed rotation, and publish the
-   shared owner profile to the current devices.
-2. Generalize the current Telemost rotation around `ProviderIdentity` and `SecretStore` without
-   changing its deployed behavior.
-3. Add identity status and reauthentication endpoints.
-4. Add OLC browser login UI and challenge callback handling.
-5. Add the versioned WB one-time-code fallback only if browser callback testing proves insufficient.
-6. Enroll Malyutin's own provider identities and move only his device assignments from shared to
-   personal profiles.
-7. Move scheduling from a logged-in Mac LaunchAgent to an always-on control-plane host before
-   expanding beyond the private test cohort.
+`local_delete` is logical deletion until backup retention expires; the design does not claim instant
+cryptographic erasure from backups. Backups retain credentials for at most 30 days and carry a
+restore-time denylist of revoked credential IDs.
 
-## Non-goals for the first rollout
+Encrypted state and object metadata are backed up at least every 15 minutes with the SQLite Online
+Backup API to a separate failure domain, followed by integrity and foreign-key checks. Leases expire
+during restore. The offline recovery KEK is independently stored with break-glass audit. Target RPO
+is 15 minutes and RTO is two hours. A strongly consistent epoch allocator and append-only
+credential revocation ledger in the backup failure domain store watermarks outside SQLite. The
+ledger records maximum credential revision and every revoke/delete event per identity. Restore
+first applies the ledger and denylist, then reserves a new epoch range above the allocator watermark
+before workers start. It fails closed if either external authority is unavailable.
+
+## Observability
+
+Structured metrics and redacted events cover:
+
+- validation age and result by provider;
+- queue depth, lease contention, stale-worker rejection, and rotation duration;
+- active/draining/failed endpoints and manifest adoption lag;
+- time until credential, room, and generation expiry;
+- probe latency, complete bytes, throughput, reconnects, and server restarts.
+
+Alerts fire when validation is older than two scheduler intervals, three consecutive rotations fail,
+expiry is under two hours without a candidate, manifest adoption exceeds five minutes for an online
+device, or no scheduler heartbeat is seen for two intervals. Each alert links to a checked-in
+runbook for reauthentication, provider outage, stuck rotation, revocation, and restore.
+
+## Verification gates
+
+Automated tests cover adapter contracts; WB owner flow without guest calls; error classification;
+credential refresh; SecretStore tamper and anti-rollback behavior; enrollment replay; lease fencing;
+CAS conflicts; process death after every publication step; duplicate schedulers; stale and partial
+object-storage reads; device authorization isolation; migration states; and seeded canary-secret
+scans of every production log sink.
+
+For each provider on a physical iPhone 11:
+
+1. cold install, one-time enrollment, VPN permission, update over the installed build, lock/unlock,
+   device reboot, app backgrounding, Wi-Fi/cellular transition, and temporary offline operation;
+2. ten consecutive rounds with 30/30 successful IP, HTTPS, and complete 1 MiB probes;
+3. zero tunnel teardown or unexplained reconnect during those rounds;
+4. median throughput no worse than 20% below the established provider baseline, with absolute floors
+   of 0.5 Mbit/s for Telemost and 2 Mbit/s for WB;
+5. server restart recovery within 90 seconds and forced generation adoption within 120 seconds;
+6. credential rejection classified correctly without guest fallback or impact on the other
+   provider;
+7. owner-device soak for 24 hours, then a second enrolled device and 48-hour soak before external
+   tester rollout.
+
+After every lifecycle action in step 1, the expected state is an active VPN with correct public IP,
+HTTPS, and complete 1 MiB probe within 90 seconds and no more than one reconnect. During intentional
+offline mode, the cached unexpired generation remains selected, no downgrade occurs, and probes pass
+within 90 seconds after connectivity returns.
+
+Server credentials are refreshed before half their remaining lifetime or two hours before expiry,
+whichever is earlier. The edge keeps enough scoped credential validity for a 30-minute control-plane
+outage; after expiry it fails closed. Fault injection covers control-plane, KMS, and network outages
+before and during edge reconnect.
+
+WB room creation, provider login, refresh, and revoke capabilities have separate live contract tests
+and remain disabled until their own evidence gates pass.
+
+## Rollout milestones
+
+1. **Runtime prerequisite:** deploy durable state, fencing, immutable publication, backup/restore,
+   monitoring, and the always-on scheduler in shadow mode.
+2. **WB repair:** restore the proved owner `connection-details` path for an operator-created room;
+   verify that the owner/edge path makes no guest calls while the isolated iPhone participant uses
+   the separately tested guest join path.
+3. **Telemost canary:** migrate one owner device to the new endpoint model, force rotation/recovery,
+   and complete a 24-hour soak.
+4. **WB canary:** reserve one inventory room, publish one device endpoint, and complete the same
+   gates. WB does not advance to production until automatic room creation and recovery pass.
+5. **Private cohort:** enroll Malyutin with separate device endpoints under the owner's identities;
+   soak for 48 hours and exercise revoke.
+6. **Login discovery:** prove provider-specific login/refresh/revoke flows; implement only the flows
+   that pass physical-device and production-egress tests.
+7. **Personal identities:** dual-publish, verify, and migrate each user from owner to personal
+   assignments.
+
+Each milestone is independently deployable and has a stop/go decision. A failed shadow, canary,
+rotation, revocation, restore, or soak gate blocks the next milestone.
+
+## Non-goals for the first release
 
 - Public self-service registration.
-- Sharing provider credentials between users or devices.
+- Provider login inside OLC.
 - Storing provider passwords.
-- Silent guest fallback for managed profiles.
-- Supporting more than one active identity per user and provider.
-- Declaring WB ready before physical iOS rotation and recovery tests pass.
+- Sharing a room, channel, or tunnel credential between active devices.
+- Silent guest fallback.
+- Unproved WB room creation.
+- More than one active identity per user and provider.
