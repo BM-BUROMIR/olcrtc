@@ -179,6 +179,9 @@ final class ProfileStore: ObservableObject {
                 restored.append(template.id)
             }
         }
+        if profiles.contains(where: { $0.id == descriptor.profileID && $0.isConfigured }) {
+            selectProfile(id: descriptor.profileID)
+        }
         return restored
     }
 

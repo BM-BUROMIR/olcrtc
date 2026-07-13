@@ -140,6 +140,7 @@ struct ProfileStoreSmokeTest {
             )
         )
         check(recovered == ["telemost", "wb"], "active VPN descriptor should recover both managed profiles")
+        check(migration.selectedProfile?.id == "telemost", "migration should preserve the active VPN profile")
         check(
             migration.profiles.first { $0.id == "wb" }?.bootstrap?.url ==
                 "https://example.invalid/bootstrap/owner-device/wb.olcb",
