@@ -109,7 +109,7 @@ with self.assertRaises(LeaseBusy):
 lease2 = store.acquire_lease("endpoint", "ep-1", "worker-b", now=t0 + timedelta(seconds=31), ttl_seconds=30)
 self.assertEqual((lease1.fencing_token, lease2.fencing_token), (1, 2))
 with self.assertRaises(StaleFence):
-    store.authorize_publication("op-1", lease1)
+    store.assert_current_lease(lease1, now=t0 + timedelta(seconds=31))
 ```
 
 - [ ] **Step 2: Confirm the race test fails**
