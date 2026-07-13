@@ -739,8 +739,14 @@ def verify_exported_ipa(ipa_path)
     UI.user_error!("exported IPA must contain exactly one app") unless app_paths.length == 1
 
     app_path = app_paths.first
-    info = Plist.parse_xml(File.join(app_path, "Info.plist"))
-    unless info["ITSAppUsesNonExemptEncryption"] == false
+    compliance = sh(
+      "/usr/bin/plutil",
+      "-extract", "ITSAppUsesNonExemptEncryption",
+      "raw",
+      File.join(app_path, "Info.plist"),
+      log: false
+    ).strip
+    unless compliance == "false"
       UI.user_error!("exported IPA is missing ITSAppUsesNonExemptEncryption=false")
     end
 
