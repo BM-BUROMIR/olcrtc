@@ -35,7 +35,7 @@ func (Provider) Issue(ctx context.Context, cfg auth.Config) (auth.Credentials, e
 			return auth.Credentials{}, fmt.Errorf("register guest: %w", err)
 		}
 		accessToken = guest
-		logger.Infof("wbstream: obtained guest access token, reuse it via auth.token to keep this identity: %s", accessToken)
+		logger.Infof("wbstream: obtained ephemeral guest credentials")
 	}
 
 	roomID := cfg.RoomURL

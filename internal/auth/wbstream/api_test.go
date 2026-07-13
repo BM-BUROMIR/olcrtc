@@ -151,7 +151,7 @@ func TestWBStreamIssueUsesSuppliedToken(t *testing.T) {
 	}
 }
 
-func TestWBStreamIssueSurfacesGuestToken(t *testing.T) {
+func TestWBStreamIssueDoesNotLogGuestToken(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /auth/api/v1/auth/user/guest-register", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(guestRegisterResponse{AccessToken: testAccessToken}) //nolint:gosec
@@ -178,8 +178,11 @@ func TestWBStreamIssueSurfacesGuestToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Issue() error = %v", err)
 	}
-	if !strings.Contains(buf.String(), testAccessToken) {
-		t.Fatalf("guest access token not surfaced in logs: %q", buf.String())
+	if strings.Contains(buf.String(), testAccessToken) {
+		t.Fatalf("guest access token leaked to logs: %q", buf.String())
+	}
+	if !strings.Contains(buf.String(), "obtained ephemeral guest credentials") {
+		t.Fatalf("guest credential event missing from logs: %q", buf.String())
 	}
 }
 
