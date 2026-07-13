@@ -19,6 +19,7 @@ import urllib.error
 API_BASE = "https://cloud-api.yandex.ru/telemost_front/v2/telemost"
 CLIENT_VERSION = "187.1.0"
 ROOM_TTL_SEC = 24 * 3600  # Telemost-комната живёт ~24ч
+HEALTH_CHECK_ATTEMPTS = 3
 
 
 class TelemostError(RuntimeError):
@@ -95,13 +96,17 @@ class TelemostClient:
             },
             method="GET",
         )
-        try:
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                return resp.status == 200
-        except urllib.error.HTTPError:
-            return False
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            raise TelemostError(f"room health check failed: {exc}") from exc
+        for attempt in range(1, HEALTH_CHECK_ATTEMPTS + 1):
+            try:
+                with urllib.request.urlopen(req, timeout=15) as resp:
+                    return resp.status == 200
+            except urllib.error.HTTPError:
+                return False
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                if attempt == HEALTH_CHECK_ATTEMPTS:
+                    raise TelemostError(f"room health check failed: {exc}") from exc
+                time.sleep(attempt)
+        raise AssertionError("unreachable")
 
 
 def load_cookie_header(path: str) -> str:
