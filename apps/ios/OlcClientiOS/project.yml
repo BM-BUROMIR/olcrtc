@@ -39,7 +39,10 @@ targets:
   OlcTunnel:
     type: app-extension
     platform: iOS
-    sources: [Tunnel]
+    sources:
+      - Tunnel
+      - App/ManagedProfile.swift
+      - App/BootstrapResolver.swift
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.oxi717.olc.tunnel

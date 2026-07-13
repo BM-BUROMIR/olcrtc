@@ -1,14 +1,6 @@
 import Combine
 import Foundation
 
-struct Subscription: Codable, Equatable {
-    let carrier: String
-    let room: String
-    let channel: String
-    let crypto_key: String
-    var transport: String? = "vp8channel"
-}
-
 struct VPNProfile: Codable, Equatable, Identifiable {
     let id: String
     var name: String

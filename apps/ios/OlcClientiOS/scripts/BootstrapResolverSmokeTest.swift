@@ -9,7 +9,7 @@ func require(_ condition: @autoclosure () -> Bool, _ message: String) {
 
 @main
 struct BootstrapResolverSmokeTest {
-    static func main() throws {
+    static func main() async throws {
         let now = Date(timeIntervalSince1970: 1_783_852_800)
         let subscription = Subscription(
             carrier: "telemost",
@@ -50,6 +50,39 @@ struct BootstrapResolverSmokeTest {
         let cachedOther = try cache.load(profileID: "wb")
         require(cachedCurrent == current, "cache round trip")
         require(cachedOther == nil, "cache must be profile isolated")
+        require(
+            !ManagedBootstrapDecision.shouldReconnect(activeGeneration: 4, candidateGeneration: 4),
+            "same generation must not reconnect"
+        )
+        require(
+            ManagedBootstrapDecision.shouldReconnect(activeGeneration: 4, candidateGeneration: 5),
+            "new generation must reconnect"
+        )
+        let tunnelDescriptor = ManagedTunnelDescriptor(
+            profileID: "telemost",
+            bootstrap: BootstrapDescriptor(
+                url: "https://example.invalid/profile",
+                client_key: String(repeating: "b", count: 64)
+            ),
+            generation: 4
+        )
+        var providerConfiguration: [String: Any] = ["cnc_yaml": "test"]
+        tunnelDescriptor.add(to: &providerConfiguration)
+        require(
+            ManagedTunnelDescriptor(providerConfiguration: providerConfiguration) == tunnelDescriptor,
+            "provider configuration round trip"
+        )
+
+        let offline = BootstrapResolver(cache: cache, fetch: { _ in throw URLError(.notConnectedToInternet) })
+        do {
+            _ = try await offline.resolve(
+                descriptor: BootstrapDescriptor(url: "https://example.invalid/profile", client_key: String(repeating: "b", count: 64)),
+                profileID: "telemost",
+                minimumAcceptedGeneration: 5,
+                now: now
+            )
+            require(false, "cache below configured generation must be rejected")
+        } catch BootstrapResolverError.noUsableConfiguration {}
 
         print("BootstrapResolverSmokeTest passed")
     }

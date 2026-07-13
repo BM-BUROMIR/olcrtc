@@ -36,12 +36,20 @@ struct BootstrapResolver {
         return try BootstrapEnvelope.decoder().decode(BootstrapEnvelope.self, from: clear)
     }
 
-    func resolve(descriptor: BootstrapDescriptor, profileID: String, now: Date = Date()) async throws -> BootstrapEnvelope {
+    func resolve(
+        descriptor: BootstrapDescriptor,
+        profileID: String,
+        minimumAcceptedGeneration: Int? = nil,
+        now: Date = Date()
+    ) async throws -> BootstrapEnvelope {
         let cached = try? cache.load(profileID: profileID)
         do {
             guard let url = URL(string: descriptor.url) else { throw BootstrapResolverError.invalidURL }
             let envelope = try Self.decrypt(try await fetch(url), keyHex: descriptor.client_key)
             try envelope.validate(profileID: profileID, now: now, minimumGeneration: nil)
+            if let minimumAcceptedGeneration, envelope.generation < minimumAcceptedGeneration {
+                throw BootstrapResolverError.staleGeneration
+            }
             if let cached, envelope.generation < cached.generation {
                 throw BootstrapResolverError.staleGeneration
             }
@@ -50,6 +58,9 @@ struct BootstrapResolver {
         } catch {
             if let cached {
                 try cached.validate(profileID: profileID, now: now, minimumGeneration: nil)
+                if let minimumAcceptedGeneration, cached.generation < minimumAcceptedGeneration {
+                    throw BootstrapResolverError.noUsableConfiguration
+                }
                 return cached
             }
             throw BootstrapResolverError.noUsableConfiguration

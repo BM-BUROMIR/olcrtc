@@ -8,7 +8,10 @@ import Foundation
 // идёт в whitelisted-видеозвонок → srv → интернет.
 final class PacketTunnelProvider: NEPacketTunnelProvider {
     private let statsQueue = DispatchQueue(label: "com.oxi717.olc.tunnel.stats")
+    private let bootstrapQueue = DispatchQueue(label: "com.oxi717.olc.tunnel.bootstrap")
     private var statsTimer: DispatchSourceTimer?
+    private var bootstrapTimer: DispatchSourceTimer?
+    private var bootstrapRefreshInFlight = false
 
     // лог в app-group (читается из приложения для диагностики физического устройства)
     private func dbg(_ m: String) {
@@ -31,11 +34,25 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         dbg("=== startTunnel ===")
         stopStatsLoop()
         let proto = protocolConfiguration as? NETunnelProviderProtocol
+        let providerConfiguration = proto?.providerConfiguration ?? [:]
+        let managed = ManagedTunnelDescriptor(providerConfiguration: providerConfiguration)
+        var activeGeneration = managed?.generation
+        var baseYAML = (providerConfiguration["cnc_yaml"] as? String) ?? ""
+        if let managed {
+            do {
+                let envelope = try await resolveManagedBootstrap(managed)
+                baseYAML = envelope.subscription.renderYAML()
+                activeGeneration = envelope.generation
+                dbg("managed bootstrap ready profile=\(managed.profileID) generation=\(envelope.generation)")
+            } catch {
+                dbg("managed bootstrap fallback profile=\(managed.profileID) generation=\(managed.generation) error=\(error.localizedDescription)")
+            }
+        }
         // динамический порт SOCKS: зомби-инстанс extension может держать старый порт
         // (переживает uninstall/kill, невидим devicectl). Каждый запуск — свой свободный
         // порт → конфликта "bind: address already in use" больше нет.
         let port = Self.freePort()
-        let yaml = ((proto?.providerConfiguration?["cnc_yaml"] as? String) ?? "")
+        let yaml = baseYAML
             .replacingOccurrences(of: "port: 1080", with: "port: \(port)")
         dbg("cnc_yaml len=\(yaml.count) dynamic SOCKS port=\(port)")
         let dir = FileManager.default
@@ -123,7 +140,79 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
             self.stopStatsLoop()
         }
         startStatsLoop()
+        if let managed, let activeGeneration {
+            startManagedBootstrapLoop(managed, activeGeneration: activeGeneration)
+        }
         dbg("=== startTunnel done ===")
+    }
+
+    private func bootstrapCache() throws -> BootstrapCache {
+        guard let base = FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: "group.com.oxi717.olc") else {
+            throw NSError(
+                domain: "com.oxi717.olc.bootstrap",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "app group unavailable"]
+            )
+        }
+        return BootstrapCache(directory: base.appendingPathComponent("olc/bootstrap"))
+    }
+
+    private func resolveManagedBootstrap(
+        _ managed: ManagedTunnelDescriptor
+    ) async throws -> BootstrapEnvelope {
+        try await BootstrapResolver(cache: bootstrapCache()).resolve(
+            descriptor: managed.bootstrap,
+            profileID: managed.profileID,
+            minimumAcceptedGeneration: managed.generation
+        )
+    }
+
+    private func startManagedBootstrapLoop(
+        _ managed: ManagedTunnelDescriptor,
+        activeGeneration: Int
+    ) {
+        stopManagedBootstrapLoop()
+        let timer = DispatchSource.makeTimerSource(queue: bootstrapQueue)
+        timer.schedule(
+            deadline: .now() + .seconds(30),
+            repeating: .seconds(60),
+            leeway: .seconds(5)
+        )
+        timer.setEventHandler { [weak self] in
+            guard let self, !self.bootstrapRefreshInFlight else { return }
+            self.bootstrapRefreshInFlight = true
+            Task {
+                defer {
+                    self.bootstrapQueue.async { self.bootstrapRefreshInFlight = false }
+                }
+                do {
+                    let candidate = try await self.resolveManagedBootstrap(managed)
+                    guard ManagedBootstrapDecision.shouldReconnect(
+                        activeGeneration: activeGeneration,
+                        candidateGeneration: candidate.generation
+                    ) else { return }
+                    self.dbg("managed bootstrap update profile=\(managed.profileID) generation=\(candidate.generation) restarting")
+                    self.stopManagedBootstrapLoop()
+                    self.cancelTunnelWithError(
+                        NSError(
+                            domain: "com.oxi717.olc.bootstrap",
+                            code: 2,
+                            userInfo: [NSLocalizedDescriptionKey: "managed configuration updated"]
+                        )
+                    )
+                } catch {
+                    self.dbg("managed bootstrap refresh failed profile=\(managed.profileID) error=\(error.localizedDescription)")
+                }
+            }
+        }
+        bootstrapTimer = timer
+        timer.resume()
+    }
+
+    private func stopManagedBootstrapLoop() {
+        bootstrapTimer?.cancel()
+        bootstrapTimer = nil
     }
 
     private func startStatsLoop() {
@@ -189,6 +278,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
     override func stopTunnel(with reason: NEProviderStopReason) async {
         dbg("stopTunnel reason=\(reason.rawValue)")
+        stopManagedBootstrapLoop()
         stopStatsLoop()
         Socks5Tunnel.quit()
         OlcmobileStop()

@@ -1,5 +1,43 @@
 import Foundation
 
+struct Subscription: Codable, Equatable {
+    let carrier: String
+    let room: String
+    let channel: String
+    let crypto_key: String
+    var transport: String? = "vp8channel"
+
+    func renderYAML() -> String {
+        let dnsServer = carrier == "wbstream" ? "77.88.8.8:53" : "8.8.8.8:53"
+        return """
+        mode: cnc
+        auth:
+          provider: \(carrier)
+        room:
+          id: "\(room)"
+          channel: "\(channel)"
+        crypto:
+          key: "\(crypto_key)"
+        net:
+          transport: \(transport ?? "vp8channel")
+          dns: "\(dnsServer)"
+        vp8:
+          fps: 30
+          batch_size: 8
+          max_bytes_per_sec: 60000
+        socks:
+          host: "127.0.0.1"
+          port: 1080
+          max_sessions: 24
+          slot_wait_ms: 500
+          block_ports: [993, 5223]
+          block_hosts: ["*.apple.com", "*.icloud.com", "*.cdn-apple.com"]
+          block_cidrs: ["17.0.0.0/8"]
+        data: "data"
+        """
+    }
+}
+
 extension Data {
     init?(hexString: String) {
         let value = hexString.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -19,6 +57,56 @@ extension Data {
 struct BootstrapDescriptor: Codable, Equatable {
     let url: String
     let client_key: String
+}
+
+struct ManagedTunnelDescriptor: Equatable {
+    let profileID: String
+    let bootstrap: BootstrapDescriptor
+    let generation: Int
+
+    private enum Key {
+        static let profileID = "managed_profile_id"
+        static let bootstrapURL = "managed_bootstrap_url"
+        static let bootstrapKey = "managed_bootstrap_key"
+        static let generation = "managed_generation"
+    }
+
+    init(profileID: String, bootstrap: BootstrapDescriptor, generation: Int) {
+        self.profileID = profileID
+        self.bootstrap = bootstrap
+        self.generation = generation
+    }
+
+    init?(providerConfiguration: [String: Any]) {
+        guard let profileID = providerConfiguration[Key.profileID] as? String,
+              let url = providerConfiguration[Key.bootstrapURL] as? String,
+              let clientKey = providerConfiguration[Key.bootstrapKey] as? String,
+              let generation = providerConfiguration[Key.generation] as? Int,
+              !profileID.isEmpty,
+              URL(string: url)?.scheme == "https",
+              Data(hexString: clientKey)?.count == 32,
+              generation > 0 else {
+            return nil
+        }
+        self.init(
+            profileID: profileID,
+            bootstrap: BootstrapDescriptor(url: url, client_key: clientKey),
+            generation: generation
+        )
+    }
+
+    func add(to providerConfiguration: inout [String: Any]) {
+        providerConfiguration[Key.profileID] = profileID
+        providerConfiguration[Key.bootstrapURL] = bootstrap.url
+        providerConfiguration[Key.bootstrapKey] = bootstrap.client_key
+        providerConfiguration[Key.generation] = generation
+    }
+}
+
+enum ManagedBootstrapDecision {
+    static func shouldReconnect(activeGeneration: Int, candidateGeneration: Int) -> Bool {
+        candidateGeneration > activeGeneration
+    }
 }
 
 enum BootstrapValidationError: Error {

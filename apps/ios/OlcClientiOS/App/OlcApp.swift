@@ -32,33 +32,7 @@ enum Sub {
     }
 
     static func renderYAML(_ s: Subscription) -> String {
-        let dnsServer = s.carrier == "wbstream" ? "77.88.8.8:53" : "8.8.8.8:53"
-        return """
-        mode: cnc
-        auth:
-          provider: \(s.carrier)
-        room:
-          id: "\(s.room)"
-          channel: "\(s.channel)"
-        crypto:
-          key: "\(s.crypto_key)"
-        net:
-          transport: \(s.transport ?? "vp8channel")
-          dns: "\(dnsServer)"
-        vp8:
-          fps: 30
-          batch_size: 8
-          max_bytes_per_sec: 60000
-        socks:
-          host: "127.0.0.1"
-          port: 1080
-          max_sessions: 24
-          slot_wait_ms: 500
-          block_ports: [993, 5223]
-          block_hosts: ["*.apple.com", "*.icloud.com", "*.cdn-apple.com"]
-          block_cidrs: ["17.0.0.0/8"]
-        data: "data"
-        """
+        s.renderYAML()
     }
 
     static func err(_ m: String) -> NSError { NSError(domain: "olc", code: -1, userInfo: [NSLocalizedDescriptionKey: m]) }
@@ -393,15 +367,19 @@ final class VPN: ObservableObject {
         status = mgr.map { String(describing: $0.connection.status) } ?? "—"
     }
 
-    func connect(yaml: String) async throws {
+    func connect(yaml: String, managed: ManagedTunnelDescriptor? = nil) async throws {
         let m = mgr ?? NETunnelProviderManager()
         let proto = NETunnelProviderProtocol()
         proto.providerBundleIdentifier = "com.oxi717.olc.tunnel"
         proto.serverAddress = "OlcRTC"
-        proto.providerConfiguration = ["cnc_yaml": yaml]
+        var providerConfiguration: [String: Any] = ["cnc_yaml": yaml]
+        managed?.add(to: &providerConfiguration)
+        proto.providerConfiguration = providerConfiguration
         m.protocolConfiguration = proto
         m.localizedDescription = "OLC"
         m.isEnabled = true
+        m.onDemandRules = [NEOnDemandRuleConnect()]
+        m.isOnDemandEnabled = true
         try await m.saveToPreferences()
         try await m.loadFromPreferences()
         try m.connection.startVPNTunnel()
@@ -409,13 +387,39 @@ final class VPN: ObservableObject {
         refresh()
     }
 
-    func disconnect() { mgr?.connection.stopVPNTunnel(); refresh() }
+    func requiresManagedConfiguration(for profile: VPNProfile?) -> Bool {
+        guard let profile, let bootstrap = profile.bootstrap else { return false }
+        guard mgr?.isOnDemandEnabled == true else { return true }
+        guard let configuration = (mgr?.protocolConfiguration as? NETunnelProviderProtocol)?
+            .providerConfiguration,
+              let current = ManagedTunnelDescriptor(providerConfiguration: configuration) else {
+            return true
+        }
+        return current.profileID != profile.id || current.bootstrap != bootstrap
+    }
+
+    func disconnect() {
+        Task { await disableOnDemandAndStop() }
+    }
+
+    private func disableOnDemandAndStop() async {
+        guard let m = mgr else {
+            refresh()
+            return
+        }
+        m.isOnDemandEnabled = false
+        try? await m.saveToPreferences()
+        m.connection.stopVPNTunnel()
+        refresh()
+    }
 
     func disconnectAndWait(timeoutSeconds: TimeInterval) async {
         guard let m = mgr else {
             refresh()
             return
         }
+        m.isOnDemandEnabled = false
+        try? await m.saveToPreferences()
         m.connection.stopVPNTunnel()
         let deadline = Date().addingTimeInterval(timeoutSeconds)
         while Date() < deadline {
@@ -528,7 +532,13 @@ struct ContentView: View {
             Self.applyProfileOverride(to: profiles)
             await vpn.load()
             AppDiag.log("task vpn status=\(vpn.raw)")
-            let forceConnect = Self.connectOnLaunchOverride
+            let managedConfigurationMissing = vpn.requiresManagedConfiguration(
+                for: profiles.selectedProfile
+            )
+            let forceConnect = Self.connectOnLaunchOverride || managedConfigurationMissing
+            if managedConfigurationMissing {
+                AppDiag.log("managed tunnel migration required profile=\(profiles.selectedProfileID)")
+            }
             if autoDirectDiag {
                 await directDiag()
                 return
@@ -785,9 +795,10 @@ struct ContentView: View {
 
     private func go() async {
         do {
-            let sub = try await resolveSubscription()
+            let resolved = try await resolveConnection()
+            let sub = resolved.subscription
             AppDiag.log("connect start provider=\(sub.carrier) transport=\(sub.transport ?? "vp8channel")")
-            try await vpn.connect(yaml: Sub.renderYAML(sub))
+            try await vpn.connect(yaml: Sub.renderYAML(sub), managed: resolved.managed)
             AppDiag.log("connect ok provider=\(sub.carrier)")
             err = ""
         } catch {
@@ -809,6 +820,10 @@ struct ContentView: View {
     }
 
     private func resolveSubscription() async throws -> Subscription {
+        try await resolveConnection().subscription
+    }
+
+    private func resolveConnection() async throws -> ResolvedConnection {
         if let profile = profiles.selectedProfile, let descriptor = profile.bootstrap {
             guard let base = FileManager.default
                 .containerURL(forSecurityApplicationGroupIdentifier: "group.com.oxi717.olc") else {
@@ -817,19 +832,41 @@ struct ContentView: View {
             let resolver = BootstrapResolver(
                 cache: BootstrapCache(directory: base.appendingPathComponent("olc/bootstrap"))
             )
-            return try await resolver.resolve(descriptor: descriptor, profileID: profile.id).subscription
+            let envelope = try await resolver.resolve(
+                descriptor: descriptor,
+                profileID: profile.id
+            )
+            return ResolvedConnection(
+                subscription: envelope.subscription,
+                managed: ManagedTunnelDescriptor(
+                    profileID: profile.id,
+                    bootstrap: descriptor,
+                    generation: envelope.generation
+                )
+            )
         }
         if let subscription = profiles.selectedProfile?.subscription {
-            return subscription
+            return ResolvedConnection(subscription: subscription, managed: nil)
         }
         if !localSub.isEmpty, let data = localSub.data(using: .utf8) {
-            return try JSONDecoder().decode(Subscription.self, from: data)
+            return ResolvedConnection(
+                subscription: try JSONDecoder().decode(Subscription.self, from: data),
+                managed: nil
+            )
         }
         if !url.isEmpty {
-            return try await Sub.fetch(url, keyHex: key)
+            return ResolvedConnection(
+                subscription: try await Sub.fetch(url, keyHex: key),
+                managed: nil
+            )
         }
         throw Sub.err("нет выбранной конфигурации")
     }
+}
+
+private struct ResolvedConnection {
+    let subscription: Subscription
+    let managed: ManagedTunnelDescriptor?
 }
 
 struct AddProfileView: View {

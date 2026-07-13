@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		001FEEA0632F6AD0C63512E9 /* ManagedProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B080973D9A28CCE7D0C7187 /* ManagedProfile.swift */; };
 		06A189E9E0F34827C94D01D3 /* BuiltInProfiles.local.json in Resources */ = {isa = PBXBuildFile; fileRef = 26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */; };
+		1A2E0B8F75DC41262E0F10AB /* BootstrapResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70276BDC1E8E718CAC204682 /* BootstrapResolver.swift */; };
+		2640167453FDFC933682A615 /* ManagedProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B080973D9A28CCE7D0C7187 /* ManagedProfile.swift */; };
 		42FEE806D7231B30FC78D94A /* OlcApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 543F0BA2D4AC63B3C48EE17C /* OlcApp.swift */; };
 		4D58A7BA3E410A696F8588D6 /* Tun2SocksKit in Frameworks */ = {isa = PBXBuildFile; productRef = F1B98BCCA30EC2559691FB30 /* Tun2SocksKit */; };
 		5B2E55104D153F89189D76DC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */; };
@@ -237,6 +239,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				1A2E0B8F75DC41262E0F10AB /* BootstrapResolver.swift in Sources */,
+				2640167453FDFC933682A615 /* ManagedProfile.swift in Sources */,
 				A85D0B14D2F5487CDC34B664 /* PacketTunnelProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
