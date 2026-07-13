@@ -12,6 +12,9 @@ databases remain in the ignored workspace runtime tree.
   refresh of the other.
 - Each enabled device receives independently encrypted Telemost and WB objects. Device bootstrap
   keys and provider owner credentials are not included in client envelopes or tracked artifacts.
+- A temporary independent device was issued against the production object store, published for
+  Telemost generation `7` and WB generation `2`, fetched and decrypted with its own key, then fully
+  removed. The enrollment artifact was mode `0600`; no temporary object remained after cleanup.
 - Active field generations at the start of acceptance were Telemost `7` and WB `2`.
 - The deployed edge executable is identified in `artifacts/control-plane-deploy/README.md`.
 
