@@ -48,6 +48,19 @@ proxy:
         self.assertEqual(rendered["proxy"]["address"], "127.0.0.1:1080")
         self.assertIn("old-room", base)
 
+    def test_can_inject_private_provider_token(self) -> None:
+        base = """
+mode: srv
+auth: {provider: wbstream}
+room: {id: old, channel: old}
+crypto: {key: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa}
+net: {transport: vp8channel}
+"""
+        rendered = yaml.safe_load(
+            render_server_config(base, candidate()["subscription"], auth_token="owner-secret")
+        )
+        self.assertEqual(rendered["auth"]["token"], "owner-secret")
+
 
 class FakeActivator:
     def __init__(self) -> None:

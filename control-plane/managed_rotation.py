@@ -131,6 +131,7 @@ class SSHServerActivator:
         remote_config: str,
         service: str,
         work_dir: pathlib.Path,
+        auth_token_path: pathlib.Path | None = None,
     ) -> None:
         self.host = host
         self.user = user
@@ -139,6 +140,7 @@ class SSHServerActivator:
         self.remote_config = remote_config
         self.service = service
         self.work_dir = work_dir
+        self.auth_token_path = auth_token_path
 
     @property
     def _ssh_options(self) -> list[str]:
@@ -163,8 +165,15 @@ class SSHServerActivator:
     def activate(self, payload: dict[str, Any]) -> "ServerBackup":
         self.work_dir.mkdir(parents=True, exist_ok=True)
         candidate = self.work_dir / "server-candidate.yaml"
+        auth_token = None
+        if self.auth_token_path is not None:
+            auth_token = self.auth_token_path.read_text(encoding="utf-8").strip()
+            if not auth_token:
+                raise ValueError("provider auth token is empty")
         rendered = render_server_config(
-            self.base_config.read_text(encoding="utf-8"), payload["subscription"]
+            self.base_config.read_text(encoding="utf-8"),
+            payload["subscription"],
+            auth_token=auth_token,
         )
         candidate.write_text(rendered, encoding="utf-8")
         os.chmod(candidate, 0o600)
@@ -329,6 +338,7 @@ def record_shadow_if_configured(
     envelope: dict[str, Any],
     *,
     now: dt.datetime,
+    provider: str = "telemost",
 ) -> dict[str, Any] | None:
     shadow = config.get("shadow")
     if shadow is None:
@@ -339,7 +349,7 @@ def record_shadow_if_configured(
         identity_id=shadow["identity_id"],
         assignment_id=shadow["assignment_id"],
         endpoint_id=shadow["endpoint_id"],
-        provider="telemost",
+        provider=provider,
     )
     return record_shadow_generation(
         state_path=shadow["state_db"],

@@ -184,6 +184,30 @@ class ShadowIntegrationTest(unittest.TestCase):
         self.assertEqual(record.call_args.kwargs["endpoint"].provider, "telemost")
         self.assertEqual(record.call_args.kwargs["now"], now)
 
+    @mock.patch("managed_rotation.record_shadow_generation")
+    def test_maps_wb_shadow_provider(self, record: mock.Mock) -> None:
+        record.return_value = {"phase": "active", "generation": 1}
+        config = {
+            "shadow": {
+                "state_db": "/private/state/control-plane.db",
+                "object_root": "/private/state/objects",
+                "user_id": "owner",
+                "device_id": "owner-iphone11",
+                "identity_id": "owner-wb",
+                "assignment_id": "owner-iphone11-wb",
+                "endpoint_id": "owner-iphone11-wb",
+            },
+        }
+
+        record_shadow_if_configured(
+            config,
+            {"generation": 1},
+            now=dt.datetime(2026, 7, 13, tzinfo=UTC),
+            provider="wbstream",
+        )
+
+        self.assertEqual(record.call_args.kwargs["endpoint"].provider, "wbstream")
+
 
 if __name__ == "__main__":
     unittest.main()

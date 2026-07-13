@@ -20,6 +20,10 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn("LoadCredential=telemost.cookies:", service)
         self.assertIn("LoadCredential=known_hosts:", service)
         self.assertIn("LoadCredential=managed-rotation.json:", service)
+        self.assertIn("LoadCredential=managed-wb-rotation.json:", service)
+        self.assertIn("LoadCredential=wb.bearer:", service)
+        self.assertIn("LoadCredential=wb.room:", service)
+        self.assertIn("LoadCredential=wb-server-base.yaml:", service)
         self.assertIn("ExecStartPost=/opt/olc/control-plane/backup-systemd-state.sh", service)
         self.assertNotIn("EnvironmentFile=", service)
         self.assertNotIn("/Users/", service)
@@ -49,6 +53,10 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn('OLC_TELEMOST_COOKIES_PATH="$CREDENTIALS_DIRECTORY/telemost.cookies"', runner)
         self.assertIn('OLC_SSH_KNOWN_HOSTS_PATH="$CREDENTIALS_DIRECTORY/known_hosts"', runner)
         self.assertIn('managed_rotation.py" --config "$CONFIG" "$@"', runner)
+        self.assertIn('managed_wb_rotation.py" --config "$WB_CONFIG" "$@"', runner)
+        self.assertIn('OLC_WB_BEARER_PATH="$CREDENTIALS_DIRECTORY/wb.bearer"', runner)
+        self.assertIn('OLC_WB_ROOM_PATH="$CREDENTIALS_DIRECTORY/wb.room"', runner)
+        self.assertIn('OLC_WB_SERVER_BASE_CONFIG="$CREDENTIALS_DIRECTORY/wb-server-base.yaml"', runner)
 
     def test_shadow_service_waits_for_private_egress(self) -> None:
         service = (ROOT / "systemd/olc-control-plane-shadow.service").read_text()

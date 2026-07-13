@@ -11,7 +11,12 @@ import yaml
 _HEX_32 = re.compile(r"^[0-9a-fA-F]{64}$")
 
 
-def render_server_config(base_yaml: str, subscription: dict) -> str:
+def render_server_config(
+    base_yaml: str,
+    subscription: dict,
+    *,
+    auth_token: str | None = None,
+) -> str:
     config = yaml.safe_load(base_yaml)
     if not isinstance(config, dict) or config.get("mode") != "srv":
         raise ValueError("base config must be an srv YAML object")
@@ -23,6 +28,10 @@ def render_server_config(base_yaml: str, subscription: dict) -> str:
 
     result = copy.deepcopy(config)
     result["auth"] = {**result.get("auth", {}), "provider": subscription["carrier"]}
+    if auth_token is not None:
+        if not auth_token.strip():
+            raise ValueError("auth_token must be non-empty")
+        result["auth"]["token"] = auth_token.strip()
     result["room"] = {"id": subscription["room"], "channel": subscription["channel"]}
     result["crypto"] = {**result.get("crypto", {}), "key": subscription["crypto_key"]}
     result["net"] = {**result.get("net", {}), "transport": subscription["transport"]}

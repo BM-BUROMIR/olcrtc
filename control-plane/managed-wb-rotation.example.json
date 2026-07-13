@@ -1,0 +1,27 @@
+{
+  "runtime_dir": ".secrets/runtime/managed-bootstrap",
+  "bearer_path": ".secrets/wb-stream/bearer",
+  "room_path": ".secrets/wb-stream/room",
+  "olcrtc_binary": "build/olcrtc",
+  "ca_bundle": "/etc/ssl/cert.pem",
+  "yc_bucket": "olc-bootstrap",
+  "envelope_ttl_hours": 12,
+  "refresh_before_hours": 2,
+  "shadow": {
+    "state_db": ".secrets/runtime/control-plane/control-plane.db",
+    "object_root": ".secrets/runtime/control-plane/objects",
+    "user_id": "owner",
+    "device_id": "owner-iphone",
+    "identity_id": "owner-wb",
+    "assignment_id": "owner-iphone-wb",
+    "endpoint_id": "owner-iphone-wb"
+  },
+  "server": {
+    "host": "203.0.113.10",
+    "user": "ubuntu",
+    "ssh_key": ".secrets/ssh/olc_access",
+    "base_config": ".secrets/runtime/managed-bootstrap/wb-server-base.yaml",
+    "config_path": "/etc/olc-bypass/wb-srv.yaml",
+    "service": "olc-wb-srv.service"
+  }
+}
