@@ -18,6 +18,7 @@
 		A85D0B14D2F5487CDC34B664 /* PacketTunnelProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE7589F7854DEBD027356A56 /* PacketTunnelProvider.swift */; };
 		AC6155AA53877769927EEEF4 /* OlcMobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7703B6A4658B0600D48485E8 /* OlcMobile.xcframework */; };
 		AEF550C4F0252BE4E30DA96B /* OlcTunnel.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 805713DA9C02E019EC68262A /* OlcTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B86494C27EBEB267A315BCB9 /* AppSettingsMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7729EABF32F4FA84522F8B8B /* AppSettingsMigration.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -53,6 +54,7 @@
 		5F484599475C204AF0FB3486 /* Tunnel.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Tunnel.entitlements; sourceTree = "<group>"; };
 		70276BDC1E8E718CAC204682 /* BootstrapResolver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BootstrapResolver.swift; sourceTree = "<group>"; };
 		7703B6A4658B0600D48485E8 /* OlcMobile.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = OlcMobile.xcframework; path = ../OlcMobile.xcframework; sourceTree = "<group>"; };
+		7729EABF32F4FA84522F8B8B /* AppSettingsMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsMigration.swift; sourceTree = "<group>"; };
 		805713DA9C02E019EC68262A /* OlcTunnel.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = OlcTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		DE7589F7854DEBD027356A56 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
@@ -122,6 +124,7 @@
 			isa = PBXGroup;
 			children = (
 				E09CCC5AD49C494D620AA71D /* App.entitlements */,
+				7729EABF32F4FA84522F8B8B /* AppSettingsMigration.swift */,
 				8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */,
 				70276BDC1E8E718CAC204682 /* BootstrapResolver.swift */,
 				26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */,
@@ -242,6 +245,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B86494C27EBEB267A315BCB9 /* AppSettingsMigration.swift in Sources */,
 				660808A3EA1B33DE5095C30C /* BootstrapResolver.swift in Sources */,
 				001FEEA0632F6AD0C63512E9 /* ManagedProfile.swift in Sources */,
 				42FEE806D7231B30FC78D94A /* OlcApp.swift in Sources */,

@@ -5,6 +5,10 @@ import OlcMobile
 
 @main
 struct OlcApp: App {
+    init() {
+        AppSettingsMigration.apply()
+    }
+
     var body: some Scene { WindowGroup { ContentView() } }
 }
 
