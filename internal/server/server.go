@@ -491,31 +491,33 @@ func (s *Server) handleReconnect() {
 	s.reinstallSession(current)
 }
 
-func (s *Server) reinstallSession(dead *smux.Session) {
+func (s *Server) reinstallSession(dead *smux.Session) bool {
+	return s.reinstallSessionWithReset(dead, false)
+}
+
+func (s *Server) resetAndReinstallSession(dead *smux.Session) bool {
+	return s.reinstallSessionWithReset(dead, true)
+}
+
+func (s *Server) reinstallSessionWithReset(dead *smux.Session, resetPeer bool) bool {
 	s.reinstallMu.Lock()
 	defer s.reinstallMu.Unlock()
 
-	// Close the old muxconns immediately so that any in-flight Push calls
-	// (from data arriving on a new bridge before this reinstall completes)
-	// are discarded rather than feeding stale frames into the dying smux
-	// session.
-	s.sessMu.RLock()
-	if s.conn != nil {
-		_ = s.conn.Close()
+	if !s.closeCurrentMuxConnsForReinstall(dead) {
+		return false
 	}
-	if s.controlConn != nil {
-		_ = s.controlConn.Close()
+	if resetPeer {
+		s.resetLinkPeer()
 	}
-	s.sessMu.RUnlock()
 
 	// Pre-build the replacement so we can swap atomically below.
 	r := s.buildReplacementSession()
 	if r == nil {
-		return
+		return false
 	}
 
 	if !s.swapSession(dead, r) {
-		return
+		return false
 	}
 
 	// Launch the handshake acceptor on the control session only when
@@ -524,6 +526,25 @@ func (s *Server) reinstallSession(dead *smux.Session) {
 	if r.controlSess != nil {
 		go s.acceptHandshake(s.baseCtx, r.controlSess)
 	}
+	return true
+}
+
+func (s *Server) closeCurrentMuxConnsForReinstall(dead *smux.Session) bool {
+	// A control loop from a replaced session can finish after the new session
+	// is live. Validate its generation before closing anything, otherwise that
+	// stale callback tears down the replacement it lost the race to.
+	s.sessMu.Lock()
+	defer s.sessMu.Unlock()
+	if s.staleReinstall(dead) {
+		return false
+	}
+	if s.conn != nil {
+		_ = s.conn.Close()
+	}
+	if s.controlConn != nil {
+		_ = s.controlConn.Close()
+	}
+	return true
 }
 
 // replacementSession holds a freshly-built data + (optional) control smux
@@ -978,8 +999,7 @@ func (s *Server) acceptHandshake(ctx context.Context, sess *smux.Session) bool {
 			default:
 			}
 			logger.Infof("server: AcceptStream(control) error - reinstalling session: %v", err)
-			s.resetLinkPeer()
-			s.reinstallSession(sess)
+			s.resetAndReinstallSession(sess)
 			return false
 		}
 		_ = stream.SetDeadline(time.Now().Add(handshake.DefaultTimeout))
@@ -992,8 +1012,7 @@ func (s *Server) acceptHandshake(ctx context.Context, sess *smux.Session) bool {
 				continue
 			}
 			logger.Warnf("handshake failed: %v", err)
-			s.resetLinkPeer()
-			s.reinstallSession(sess)
+			s.resetAndReinstallSession(sess)
 			return false
 		}
 		s.sessMu.Lock()
@@ -1244,10 +1263,11 @@ func (s *Server) startControlLoop(ctx context.Context, sess *smux.Session, strea
 		if err != nil {
 			logger.Warnf("server control stream ended: %v", err)
 		}
+		if !s.resetAndReinstallSession(sess) {
+			return
+		}
 		s.recordReconnect()
-		logger.Infof("server reconnect reason=liveness - reinstalling smux session")
-		s.resetLinkPeer()
-		s.reinstallSession(sess)
+		logger.Infof("server reconnect reason=liveness - reinstalled smux session")
 		// Tell the carrier to rebuild itself too. Without this the SFU side
 		// keeps its dead PC around and the client's reconnect handshakes
 		// keep landing in the void until the carrier eventually notices on

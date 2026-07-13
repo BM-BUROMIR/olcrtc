@@ -213,9 +213,10 @@ func TestOnDataWithNilConn(_ *testing.T) {
 }
 
 type serverLinkStub struct {
-	closed     bool
-	resetCount int
-	resetCh    chan struct{}
+	closed      bool
+	resetCount  int
+	resetCh     chan struct{}
+	reconnectCh chan string
 }
 
 func (s *serverLinkStub) Connect(context.Context) error   { return nil }
@@ -227,7 +228,14 @@ func (s *serverLinkStub) SetEndedCallback(func(string))   {}
 func (s *serverLinkStub) WatchConnection(context.Context) {}
 func (s *serverLinkStub) CanSend() bool                   { return true }
 func (s *serverLinkStub) Features() transport.Features    { return transport.Features{} }
-func (s *serverLinkStub) Reconnect(string)                {}
+func (s *serverLinkStub) Reconnect(reason string) {
+	if s.reconnectCh != nil {
+		select {
+		case s.reconnectCh <- reason:
+		default:
+		}
+	}
+}
 func (s *serverLinkStub) ResetPeer() {
 	s.resetCount++
 	if s.resetCh != nil {
@@ -393,6 +401,121 @@ func TestReinstallSessionFiresOnClose(t *testing.T) {
 	s.closeSession()
 	if got.sid != "sid-123" || got.reason != "closed" {
 		t.Fatalf("onClose = %+v, want {sid-123 closed}", got)
+	}
+}
+
+func TestAcceptHandshakeIgnoresStaleControlSessionWithoutReset(t *testing.T) {
+	liveA, liveB := net.Pipe()
+	defer func() {
+		_ = liveA.Close()
+		_ = liveB.Close()
+	}()
+	liveSess, err := smux.Server(liveA, smuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Server(live) error = %v", err)
+	}
+	defer func() { _ = liveSess.Close() }()
+
+	staleA, staleB := net.Pipe()
+	defer func() {
+		_ = staleA.Close()
+		_ = staleB.Close()
+	}()
+	staleControlSess, err := smux.Server(staleA, controlSmuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Server(stale control) error = %v", err)
+	}
+	defer func() { _ = staleControlSess.Close() }()
+	staleClientSess, err := smux.Client(staleB, controlSmuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Client(stale control) error = %v", err)
+	}
+
+	ln := &serverLinkStub{}
+	s := &Server{
+		ln:          ln,
+		session:     liveSess,
+		controlSess: liveSess,
+	}
+	_ = staleClientSess.Close()
+
+	done := make(chan bool, 1)
+	go func() {
+		done <- s.acceptHandshake(context.Background(), staleControlSess)
+	}()
+
+	select {
+	case ok := <-done:
+		if ok {
+			t.Fatal("acceptHandshake() unexpectedly succeeded")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("acceptHandshake() did not return after stale control session closed")
+	}
+	if ln.resetCount != 0 {
+		t.Fatalf("ResetPeer calls = %d, want 0 for stale control session", ln.resetCount)
+	}
+}
+
+func TestStaleControlLoopDoesNotReconnectCarrier(t *testing.T) {
+	liveA, liveB := net.Pipe()
+	defer func() {
+		_ = liveA.Close()
+		_ = liveB.Close()
+	}()
+	liveSess, err := smux.Server(liveA, smuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Server(live) error = %v", err)
+	}
+	defer func() { _ = liveSess.Close() }()
+
+	staleA, staleB := net.Pipe()
+	defer func() {
+		_ = staleA.Close()
+		_ = staleB.Close()
+	}()
+	staleServerSess, err := smux.Server(staleA, controlSmuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Server(stale) error = %v", err)
+	}
+	defer func() { _ = staleServerSess.Close() }()
+	staleClientSess, err := smux.Client(staleB, controlSmuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Client(stale) error = %v", err)
+	}
+	defer func() { _ = staleClientSess.Close() }()
+
+	serverStreamCh := make(chan *smux.Stream, 1)
+	go func() {
+		stream, acceptErr := staleServerSess.AcceptStream()
+		if acceptErr == nil {
+			serverStreamCh <- stream
+		}
+	}()
+	clientStream, err := staleClientSess.OpenStream()
+	if err != nil {
+		t.Fatalf("OpenStream() error = %v", err)
+	}
+	serverStream := <-serverStreamCh
+
+	ln := &serverLinkStub{reconnectCh: make(chan string, 1)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s := &Server{
+		ln:          ln,
+		session:     liveSess,
+		controlSess: liveSess,
+		health:      runtime.NewHealthTracker(nil),
+		done:        make(chan struct{}),
+	}
+	s.startControlLoop(ctx, staleServerSess, serverStream)
+	_ = clientStream.Close()
+	_ = staleClientSess.Close()
+
+	select {
+	case reason := <-ln.reconnectCh:
+		t.Fatalf("stale control loop triggered carrier reconnect: %s", reason)
+	case <-time.After(200 * time.Millisecond):
 	}
 }
 
@@ -730,4 +853,63 @@ func TestReinstallSessionClosesOldConnBeforeSwap(t *testing.T) {
 	}
 	_ = newSess.Close()
 	_ = newConn.Close()
+}
+
+func TestReinstallSessionIgnoresStaleDeadSessionWithoutClosingLiveConns(t *testing.T) {
+	cipher, err := cryptopkg.NewCipher("01234567890123456789012345678901")
+	if err != nil {
+		t.Fatalf("NewCipher() error = %v", err)
+	}
+	ln := &serverLinkStub{}
+	liveConn := muxconn.New(ln, cipher)
+	liveSess, err := smux.Server(liveConn, smuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Server(live) error = %v", err)
+	}
+	liveControlConn := muxconn.New(ln, cipher)
+	deadConn := muxconn.New(ln, cipher)
+	deadSess, err := smux.Server(deadConn, smuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Server(dead) error = %v", err)
+	}
+	defer func() {
+		_ = liveSess.Close()
+		_ = liveConn.Close()
+		_ = liveControlConn.Close()
+		_ = deadSess.Close()
+		_ = deadConn.Close()
+	}()
+	s := &Server{
+		ln:           ln,
+		cipher:       cipher,
+		conn:         liveConn,
+		controlConn:  liveControlConn,
+		session:      liveSess,
+		onClose:      func(string, string) {},
+		health:       runtime.NewHealthTracker(nil),
+		peerSessions: make(map[string]*peerSession),
+	}
+
+	s.reinstallSession(deadSess)
+
+	s.sessMu.RLock()
+	gotConn := s.conn
+	gotControlConn := s.controlConn
+	gotSess := s.session
+	s.sessMu.RUnlock()
+	if gotConn != liveConn {
+		t.Fatal("stale reinstall replaced live conn")
+	}
+	if gotControlConn != liveControlConn {
+		t.Fatal("stale reinstall replaced live control conn")
+	}
+	if gotSess != liveSess {
+		t.Fatal("stale reinstall replaced live session")
+	}
+	if _, err := liveConn.Write([]byte("live data")); err != nil {
+		t.Fatalf("stale reinstall closed live conn: %v", err)
+	}
+	if _, err := liveControlConn.Write([]byte("live control")); err != nil {
+		t.Fatalf("stale reinstall closed live control conn: %v", err)
+	}
 }

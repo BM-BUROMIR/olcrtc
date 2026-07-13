@@ -653,6 +653,18 @@ func (s *closerLinkStub) Features() transport.Features    { return transport.Fea
 func (s *closerLinkStub) Reconnect(string)                {}
 func (s *closerLinkStub) ResetPeer()                      { s.resetCount++ }
 
+type reconnectTrackingLinkStub struct {
+	closerLinkStub
+	reconnectCh chan string
+}
+
+func (s *reconnectTrackingLinkStub) Reconnect(reason string) {
+	select {
+	case s.reconnectCh <- reason:
+	default:
+	}
+}
+
 func TestOnDataWithNilConn(_ *testing.T) {
 	c := &Client{}
 	c.onData([]byte("ignored"))
@@ -681,6 +693,75 @@ func TestResetLinkPeer(t *testing.T) {
 	c.resetLinkPeer()
 	if ln.resetCount != 1 {
 		t.Fatalf("ResetPeer calls = %d, want 1", ln.resetCount)
+	}
+}
+
+func TestStaleControlLoopDoesNotReconnectReplacementSession(t *testing.T) {
+	a, b := net.Pipe()
+	defer func() {
+		_ = a.Close()
+		_ = b.Close()
+	}()
+	serverSess, err := smux.Server(a, smuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Server() error = %v", err)
+	}
+	clientSess, err := smux.Client(b, smuxConfig(0))
+	if err != nil {
+		t.Fatalf("smux.Client() error = %v", err)
+	}
+	defer func() { _ = clientSess.Close() }()
+
+	peerStreamCh := make(chan *smux.Stream, 1)
+	go func() {
+		stream, acceptErr := serverSess.AcceptStream()
+		if acceptErr == nil {
+			peerStreamCh <- stream
+		}
+	}()
+	staleStream, err := clientSess.OpenStream()
+	if err != nil {
+		t.Fatalf("OpenStream() error = %v", err)
+	}
+	peerStream := <-peerStreamCh
+
+	cipher, err := cryptopkg.NewCipher("01234567890123456789012345678901")
+	if err != nil {
+		t.Fatalf("NewCipher() error = %v", err)
+	}
+	ln := &reconnectTrackingLinkStub{reconnectCh: make(chan string, 1)}
+	c := &Client{
+		ln:           ln,
+		cipher:       cipher,
+		health:       runtime.NewHealthTracker(nil),
+		sessionID:    "old-session",
+		sessionReady: make(chan struct{}),
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c.reconnectMu.Lock()
+	c.startControlLoop(ctx, Config{}, cancel, staleStream)
+	_ = peerStream.Close()
+	_ = serverSess.Close()
+	time.Sleep(50 * time.Millisecond)
+	c.sessMu.Lock()
+	c.controlStrm = nil
+	c.controlStop = nil
+	c.sessionID = "replacement-session"
+	c.sessMu.Unlock()
+	c.reconnectMu.Unlock()
+
+	select {
+	case reason := <-ln.reconnectCh:
+		t.Fatalf("stale control loop triggered reconnect: %s", reason)
+	case <-time.After(200 * time.Millisecond):
+	}
+	c.sessMu.RLock()
+	sid := c.sessionID
+	c.sessMu.RUnlock()
+	if sid != "replacement-session" {
+		t.Fatalf("sessionID = %q, want replacement-session", sid)
 	}
 }
 

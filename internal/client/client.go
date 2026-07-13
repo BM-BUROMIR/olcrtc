@@ -426,8 +426,26 @@ func linkMaxPayload(tr transport.Transport) int {
 }
 
 func (c *Client) handleReconnect(ctx context.Context, cfg Config, cancel context.CancelFunc, reason string) {
+	c.handleReconnectForControlStream(ctx, cfg, cancel, reason, nil)
+}
+
+func (c *Client) handleReconnectForControlStream(
+	ctx context.Context,
+	cfg Config,
+	cancel context.CancelFunc,
+	reason string,
+	source *smux.Stream,
+) {
 	c.reconnectMu.Lock()
 	defer c.reconnectMu.Unlock()
+	if source != nil {
+		c.sessMu.RLock()
+		current := c.controlStrm
+		c.sessMu.RUnlock()
+		if current != source {
+			return
+		}
+	}
 
 	c.recordReconnect()
 	logger.Infof("client reconnect reason=%s - tearing down smux session", reason)
@@ -665,7 +683,7 @@ func (c *Client) startControlLoop(
 		}
 		// handleReconnect now retries indefinitely on liveness so it only
 		// returns false on ctx cancellation; don't tear down the client.
-		c.handleReconnect(ctx, cfg, cancel, "liveness")
+		c.handleReconnectForControlStream(ctx, cfg, cancel, "liveness", stream)
 	}()
 }
 
