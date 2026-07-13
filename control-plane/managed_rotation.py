@@ -142,10 +142,19 @@ class SSHServerActivator:
 
     @property
     def _ssh_options(self) -> list[str]:
-        return [
+        options = [
             "-i", str(self.ssh_key), "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes",
-            "-o", "StrictHostKeyChecking=accept-new", "-o", "ConnectTimeout=15",
+            "-o", "ConnectTimeout=15",
         ]
+        known_hosts = os.environ.get("OLC_SSH_KNOWN_HOSTS_PATH")
+        if known_hosts:
+            options.extend([
+                "-o", "StrictHostKeyChecking=yes",
+                "-o", f"UserKnownHostsFile={known_hosts}",
+            ])
+        else:
+            options.extend(["-o", "StrictHostKeyChecking=accept-new"])
+        return options
 
     @property
     def _target(self) -> str:
@@ -355,8 +364,14 @@ def main() -> int:
         raise SystemExit("AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY are required")
     runtime = pathlib.Path(config["runtime_dir"])
     room_manager = RoomManager(
-        TelemostClient(load_cookie_header(config["cookies_path"])),
-        Deployment.load(config["deployment_path"]),
+        TelemostClient(
+            load_cookie_header(
+                os.environ.get("OLC_TELEMOST_COOKIES_PATH", config["cookies_path"])
+            )
+        ),
+        Deployment.load(
+            os.environ.get("OLC_DEPLOYMENT_PATH", config["deployment_path"])
+        ),
         str(runtime / "rooms.json"),
     )
     room = room_manager.rotate_now() if args.force else room_manager.ensure_current()
@@ -381,8 +396,12 @@ def main() -> int:
     server = config["server"]
     activator = SSHServerActivator(
         host=server["host"], user=server.get("user", "ubuntu"),
-        ssh_key=pathlib.Path(server["ssh_key"]),
-        base_config=pathlib.Path(server["base_config"]),
+        ssh_key=pathlib.Path(
+            os.environ.get("OLC_SSH_KEY_PATH", server["ssh_key"])
+        ),
+        base_config=pathlib.Path(
+            os.environ.get("OLC_SERVER_BASE_CONFIG", server["base_config"])
+        ),
         remote_config=server.get("config_path", "/etc/olc-bypass/tm-srv.yaml"),
         service=server.get("service", "olc-telemost-srv.service"),
         work_dir=runtime,

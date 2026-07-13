@@ -102,3 +102,14 @@ control-plane/install-managed-rotation-launchd.sh \
 
 The generated plist and logs remain in the private runtime directory. The user
 LaunchAgents directory contains only a symlink, so the job is restored after login.
+
+### Durable shadow mode
+
+The optional `shadow` section in `managed-rotation.example.json` records each successful legacy
+rotation in SQLite as a fenced operation, writes an immutable private generation, and atomically
+advances a manifest. It does not replace the client-facing legacy object.
+
+For an always-on Linux host use the checked-in systemd service/timer and
+`run-systemd-rotation.sh`. Provider, SSH, deployment, and base-config credentials are supplied with
+`LoadCredential`; SSH host identity is pinned. Deployment and restore procedures are in
+`runbooks/shadow-rollout.md` and `runbooks/control-plane-restore.md`.
