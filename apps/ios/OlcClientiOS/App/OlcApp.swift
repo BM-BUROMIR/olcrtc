@@ -434,7 +434,7 @@ struct ContentView: View {
     @AppStorage("clientKey") private var key = ""
     @AppStorage("localSub") private var localSub = ""
     @AppStorage("autoDirectDiag") private var autoDirectDiag = false
-    @AppStorage("autoVPN") private var autoVPN = false
+    @AppStorage("autoVPN") private var autoVPN = true
     @State private var err = ""
     @State private var tlog = ""
     @State private var isShowingAddProfile = false
