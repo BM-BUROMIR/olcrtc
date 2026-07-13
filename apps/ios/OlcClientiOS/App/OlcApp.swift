@@ -398,6 +398,14 @@ final class VPN: ObservableObject {
         return current.profileID != profile.id || current.bootstrap != bootstrap
     }
 
+    func managedConfiguration() -> ManagedTunnelDescriptor? {
+        guard let configuration = (mgr?.protocolConfiguration as? NETunnelProviderProtocol)?
+            .providerConfiguration else {
+            return nil
+        }
+        return ManagedTunnelDescriptor(providerConfiguration: configuration)
+    }
+
     func disconnect() {
         Task { await disableOnDemandAndStop() }
     }
@@ -482,6 +490,9 @@ struct ContentView: View {
                         LabeledContent("Канал", value: profile.subscription?.carrier ?? profile.id)
                         LabeledContent("Транспорт", value: profile.subscription?.transport ?? "managed")
                         LabeledContent("Тип", value: profile.isBuiltIn ? "built-in" : "custom")
+                        if !profile.isConfigured {
+                            LabeledContent("Настройка", value: "Требуется код подключения")
+                        }
                         if !profile.isBuiltIn {
                             Button("Удалить профиль", role: .destructive) {
                                 profiles.deleteProfile(id: profile.id)
@@ -532,6 +543,12 @@ struct ContentView: View {
             Self.applyProfileOverride(to: profiles)
             await vpn.load()
             AppDiag.log("task vpn status=\(vpn.raw)")
+            if let existing = vpn.managedConfiguration() {
+                let restored = profiles.restoreManagedEnrollment(from: existing)
+                if !restored.isEmpty {
+                    AppDiag.log("restored managed enrollment profiles=\(restored.joined(separator: ","))")
+                }
+            }
             let managedConfigurationMissing = vpn.requiresManagedConfiguration(
                 for: profiles.selectedProfile
             )
@@ -552,7 +569,7 @@ struct ContentView: View {
             // идемпотентно: НЕ disconnect→connect (плодит конфликтующие инстансы extension за порт);
             // подключаем только если ещё не активны
             if (autoVPN || forceConnect), vpn.raw != .connected, vpn.raw != .connecting, vpn.raw != .reasserting,
-               profiles.selectedProfile != nil || !localSub.isEmpty || !url.isEmpty {
+               profiles.selectedProfile?.isConfigured == true || !localSub.isEmpty || !url.isEmpty {
                 AppDiag.log("auto connect trigger autoVPN=\(autoVPN) force=\(forceConnect)")
                 await go()
             } else {
@@ -884,8 +901,8 @@ struct AddProfileView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("JSON") {
-                    TextField("subscription JSON", text: $json, axis: .vertical)
+                Section("Код подключения / JSON") {
+                    TextField("Вставьте код подключения", text: $json, axis: .vertical)
                         .lineLimit(3...8)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)

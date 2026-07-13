@@ -52,6 +52,15 @@ mkdir -p "$valid"
 make_profiles "$valid/BuiltInProfiles.local.json"
 "$verifier" --profiles "$valid/BuiltInProfiles.local.json" --scan-root "$valid"
 
+universal="$fixtures/universal.json"
+jq 'map(.bootstrap = null)' "$valid/BuiltInProfiles.local.json" >"$universal"
+expect_rejected "invalid bootstrap URL: telemost" --profiles "$universal" --scan-root "$fixtures"
+"$verifier" --allow-unenrolled --profiles "$universal" --scan-root "$fixtures"
+
+mixed="$fixtures/mixed.json"
+jq 'map(if .id == "wb" then .bootstrap = null else . end)' "$valid/BuiltInProfiles.local.json" >"$mixed"
+expect_rejected "mixed managed enrollment state" --allow-unenrolled --profiles "$mixed" --scan-root "$fixtures"
+
 missing="$fixtures/missing.json"
 jq 'map(select(.id != "wb"))' "$valid/BuiltInProfiles.local.json" >"$missing"
 expect_rejected "missing managed profile: wb" --profiles "$missing" --scan-root "$fixtures"

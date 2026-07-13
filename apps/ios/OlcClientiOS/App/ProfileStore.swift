@@ -7,6 +7,10 @@ struct VPNProfile: Codable, Equatable, Identifiable {
     var subscription: Subscription?
     var bootstrap: BootstrapDescriptor? = nil
     var isBuiltIn: Bool
+
+    var isConfigured: Bool {
+        subscription != nil || bootstrap != nil
+    }
 }
 
 private struct ManagedEnrollment: Codable {
@@ -90,28 +94,92 @@ final class ProfileStore: ObservableObject {
 
     @discardableResult
     func addManagedProfileFromJSON(json: String) throws -> VPNProfile {
-        let enrollment = try JSONDecoder().decode(ManagedEnrollment.self, from: Data(json.utf8))
-        guard !enrollment.id.isEmpty,
-              URL(string: enrollment.bootstrap.url)?.scheme == "https",
-              Data(hexString: enrollment.bootstrap.client_key)?.count == 32 else {
-            throw NSError(
-                domain: "olc.profile",
-                code: 1,
-                userInfo: [NSLocalizedDescriptionKey: "некорректный managed enrollment"]
+        guard let profile = try addManagedProfilesFromJSON(json: json).first else {
+            throw managedEnrollmentError()
+        }
+        return profile
+    }
+
+    @discardableResult
+    func addManagedProfilesFromJSON(json: String) throws -> [VPNProfile] {
+        let data = Data(json.utf8)
+        let decoder = JSONDecoder()
+        let enrollments: [ManagedEnrollment]
+        if let batch = try? decoder.decode([ManagedEnrollment].self, from: data) {
+            enrollments = batch
+        } else {
+            enrollments = [try decoder.decode(ManagedEnrollment.self, from: data)]
+        }
+        guard !enrollments.isEmpty else { throw managedEnrollmentError() }
+
+        let allowedIDs = Set(builtInProfiles.map(\.id))
+        let ids = enrollments.map(\.id)
+        guard Set(ids).count == ids.count,
+              enrollments.allSatisfy({ enrollment in
+                  allowedIDs.contains(enrollment.id) &&
+                      !enrollment.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+                      enrollment.bootstrap.isValid
+              }) else {
+            throw managedEnrollmentError()
+        }
+
+        let profiles = enrollments.map { enrollment in
+            VPNProfile(
+                id: enrollment.id,
+                name: enrollment.name,
+                subscription: nil,
+                bootstrap: enrollment.bootstrap,
+                isBuiltIn: false
             )
         }
-        let profile = VPNProfile(
-            id: enrollment.id,
-            name: enrollment.name,
+        let importedIDs = Set(profiles.map(\.id))
+        var customProfiles = loadCustomProfiles().filter { !importedIDs.contains($0.id) }
+        customProfiles.append(contentsOf: profiles)
+        saveCustomProfiles(customProfiles)
+        reload(preferredSelection: profiles.first?.id)
+        return profiles
+    }
+
+    @discardableResult
+    func restoreManagedProfile(id: String, name: String, bootstrap: BootstrapDescriptor) -> Bool {
+        guard profiles.first(where: { $0.id == id })?.bootstrap == nil,
+              builtInProfiles.contains(where: { $0.id == id }),
+              bootstrap.isValid else {
+            return false
+        }
+        let restored = VPNProfile(
+            id: id,
+            name: name,
             subscription: nil,
-            bootstrap: enrollment.bootstrap,
+            bootstrap: bootstrap,
             isBuiltIn: false
         )
-        var customProfiles = loadCustomProfiles().filter { $0.id != profile.id }
-        customProfiles.append(profile)
+        var customProfiles = loadCustomProfiles().filter { $0.id != id }
+        customProfiles.append(restored)
         saveCustomProfiles(customProfiles)
-        reload(preferredSelection: profile.id)
-        return profile
+        reload(preferredSelection: id)
+        return true
+    }
+
+    @discardableResult
+    func restoreManagedEnrollment(from descriptor: ManagedTunnelDescriptor) -> [String] {
+        var restored: [String] = []
+        for template in builtInProfiles {
+            let bootstrap: BootstrapDescriptor?
+            if template.id == descriptor.profileID {
+                bootstrap = descriptor.bootstrap
+            } else {
+                bootstrap = descriptor.bootstrap.sibling(
+                    from: descriptor.profileID,
+                    to: template.id
+                )
+            }
+            if let bootstrap,
+               restoreManagedProfile(id: template.id, name: template.name, bootstrap: bootstrap) {
+                restored.append(template.id)
+            }
+        }
+        return restored
     }
 
     func deleteProfile(id: String) {
@@ -158,5 +226,13 @@ final class ProfileStore: ObservableObject {
     private func saveCustomProfiles(_ profiles: [VPNProfile]) {
         let data = try? JSONEncoder().encode(profiles.filter { !$0.isBuiltIn })
         defaults.set(data, forKey: customProfilesKey)
+    }
+
+    private func managedEnrollmentError() -> NSError {
+        NSError(
+            domain: "olc.profile",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "некорректный managed enrollment"]
+        )
     }
 }

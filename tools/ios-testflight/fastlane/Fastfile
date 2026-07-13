@@ -48,6 +48,10 @@ def build_number
   ENV["OLC_IOS_BUILD_NUMBER"].to_s.empty? ? Time.now.utc.strftime("%Y%m%d%H%M") : ENV.fetch("OLC_IOS_BUILD_NUMBER")
 end
 
+def universal_enrollment_build?
+  ENV["OLC_IOS_UNIVERSAL_BUILD"] == "1"
+end
+
 def build_output_dir
   File.join(repo_root, "tools", "ios-testflight", "build")
 end
@@ -81,7 +85,10 @@ def generate_profiles
   return unless File.file?(script)
 
   Dir.chdir(ios_app_dir) do
-    sh("env", "RUBYOPT=--disable=gems", "ruby", script, "--allow-missing-wb")
+    command = ["env"]
+    command += ["-u", "OLC_MANAGED_PROFILES_JSON"] if universal_enrollment_build?
+    command += ["RUBYOPT=--disable=gems", "ruby", script, "--allow-missing-wb"]
+    sh(*command)
   end
 end
 
@@ -105,9 +112,9 @@ def verify_package
   profiles = File.join(ios_app_dir, "App", "BuiltInProfiles.local.json")
   command = [
     File.join(repo_root, "tools", "ios-testflight", "verify-package.sh"),
-    "--profiles", profiles,
-    "--scan-root", profiles
   ]
+  command << "--allow-unenrolled" if universal_enrollment_build?
+  command += ["--profiles", profiles, "--scan-root", profiles]
   framework = File.join(repo_root, "apps", "ios", "OlcMobile.xcframework")
   command += ["--scan-root", framework] if File.exist?(framework)
   sh(*command)

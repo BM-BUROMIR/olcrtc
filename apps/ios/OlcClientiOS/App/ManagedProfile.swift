@@ -57,6 +57,38 @@ extension Data {
 struct BootstrapDescriptor: Codable, Equatable {
     let url: String
     let client_key: String
+
+    var isValid: Bool {
+        guard Data(hexString: client_key)?.count == 32,
+              let components = URLComponents(string: url),
+              components.scheme == "https",
+              components.host?.isEmpty == false,
+              components.user == nil,
+              components.password == nil,
+              components.query == nil,
+              components.fragment == nil else {
+            return false
+        }
+        return true
+    }
+
+    func sibling(from sourceProfileID: String, to targetProfileID: String) -> BootstrapDescriptor? {
+        let knownProfiles = Set(["telemost", "wb"])
+        guard knownProfiles.contains(sourceProfileID),
+              knownProfiles.contains(targetProfileID),
+              sourceProfileID != targetProfileID,
+              isValid,
+              let source = URL(string: url),
+              source.lastPathComponent == "\(sourceProfileID).olcb" else {
+            return nil
+        }
+        let deviceDirectory = source.deletingLastPathComponent()
+        guard !deviceDirectory.lastPathComponent.isEmpty else { return nil }
+        return BootstrapDescriptor(
+            url: deviceDirectory.appendingPathComponent("\(targetProfileID).olcb").absoluteString,
+            client_key: client_key
+        )
+    }
 }
 
 struct ManagedTunnelDescriptor: Equatable {
@@ -83,14 +115,14 @@ struct ManagedTunnelDescriptor: Equatable {
               let clientKey = providerConfiguration[Key.bootstrapKey] as? String,
               let generation = providerConfiguration[Key.generation] as? Int,
               !profileID.isEmpty,
-              URL(string: url)?.scheme == "https",
-              Data(hexString: clientKey)?.count == 32,
               generation > 0 else {
             return nil
         }
+        let bootstrap = BootstrapDescriptor(url: url, client_key: clientKey)
+        guard bootstrap.isValid else { return nil }
         self.init(
             profileID: profileID,
-            bootstrap: BootstrapDescriptor(url: url, client_key: clientKey),
+            bootstrap: bootstrap,
             generation: generation
         )
     }

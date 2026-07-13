@@ -2,14 +2,19 @@
 set -eu
 
 usage() {
-  echo "Usage: verify-package.sh --profiles PATH [--scan-root PATH ...]" >&2
+  echo "Usage: verify-package.sh [--allow-unenrolled] --profiles PATH [--scan-root PATH ...]" >&2
   exit 2
 }
 
 profiles=
 scan_roots=
+allow_unenrolled=false
 while [ "$#" -gt 0 ]; do
   case "$1" in
+    --allow-unenrolled)
+      allow_unenrolled=true
+      shift
+      ;;
     --profiles)
       [ "$#" -ge 2 ] || usage
       profiles=$2
@@ -28,12 +33,26 @@ done
 [ -n "$profiles" ] || usage
 [ -f "$profiles" ] || { echo "managed profiles file is missing" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
+jq -e 'type == "array"' "$profiles" >/dev/null || { echo "profiles must be a JSON array" >&2; exit 1; }
+
+if [ "$allow_unenrolled" = true ]; then
+  unenrolled_count=$(jq '[.[] | select((.id == "telemost" or .id == "wb") and .bootstrap == null)] | length' "$profiles")
+  case "$unenrolled_count" in
+    0|2) ;;
+    *) echo "mixed managed enrollment state" >&2; exit 1 ;;
+  esac
+fi
 
 for profile_id in telemost wb; do
   count=$(jq --arg id "$profile_id" '[.[] | select(.id == $id)] | length' "$profiles")
   [ "$count" = 1 ] || { echo "missing managed profile: $profile_id" >&2; exit 1; }
   jq -e --arg id "$profile_id" '.[] | select(.id == $id) | .subscription == null' \
     "$profiles" >/dev/null || { echo "embedded subscription: $profile_id" >&2; exit 1; }
+  if [ "$allow_unenrolled" = true ] && \
+    jq -e --arg id "$profile_id" '.[] | select(.id == $id) | .bootstrap == null' \
+      "$profiles" >/dev/null; then
+    continue
+  fi
   jq -e --arg id "$profile_id" \
     '.[] | select(.id == $id) | (.bootstrap.url | type == "string" and test("^https://[^/[:space:]]+/.+"))' \
     "$profiles" >/dev/null || { echo "invalid bootstrap URL: $profile_id" >&2; exit 1; }
