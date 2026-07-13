@@ -6,6 +6,7 @@ import contextlib
 import hashlib
 import os
 import pathlib
+import re
 import sqlite3
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -61,9 +62,16 @@ class ControlPlaneStore:
         return connection
 
     def _migrate(self) -> None:
-        migration = pathlib.Path(__file__).with_name("migrations") / "001_control_plane.sql"
-        sql = migration.read_text(encoding="utf-8")
-        checksum = hashlib.sha256(sql.encode()).hexdigest()
+        migration_dir = pathlib.Path(__file__).with_name("migrations")
+        migrations: list[tuple[int, pathlib.Path]] = []
+        for migration in sorted(migration_dir.glob("*.sql")):
+            match = re.fullmatch(r"(\d{3})_[a-z0-9_]+\.sql", migration.name)
+            if match is None:
+                raise StoreError(f"invalid migration filename: {migration.name}")
+            migrations.append((int(match.group(1)), migration))
+        if not migrations:
+            raise StoreError("no control-plane migrations found")
+
         with self._connect() as connection:
             connection.execute(
                 """
@@ -74,17 +82,30 @@ class ControlPlaneStore:
                 ) STRICT
                 """
             )
-            current = connection.execute(
-                "SELECT checksum FROM schema_migrations WHERE version = 1"
-            ).fetchone()
-            if current is None:
-                connection.executescript(sql)
-                connection.execute(
-                    "INSERT INTO schema_migrations(version, checksum) VALUES (1, ?)",
-                    (checksum,),
-                )
-            elif current["checksum"] != checksum:
-                raise StoreError("migration 1 checksum mismatch")
+            applied = {
+                int(row["version"]): str(row["checksum"])
+                for row in connection.execute(
+                    "SELECT version, checksum FROM schema_migrations"
+                ).fetchall()
+            }
+            for version, migration in migrations:
+                sql = migration.read_text(encoding="utf-8")
+                checksum = hashlib.sha256(sql.encode()).hexdigest()
+                if version in applied:
+                    if applied[version] != checksum:
+                        raise StoreError(f"migration {version} checksum mismatch")
+                    continue
+                try:
+                    connection.executescript(
+                        "BEGIN IMMEDIATE;\n"
+                        + sql
+                        + f"\nINSERT INTO schema_migrations(version, checksum) "
+                        f"VALUES ({version}, '{checksum}');\nCOMMIT;"
+                    )
+                except BaseException:
+                    if connection.in_transaction:
+                        connection.execute("ROLLBACK")
+                    raise
         os.chmod(self.path, 0o600)
 
     @contextlib.contextmanager
