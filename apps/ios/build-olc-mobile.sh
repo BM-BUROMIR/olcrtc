@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 OUTPUT="$ROOT/apps/ios/OlcMobile.xcframework"
-BUILD_ROOT=${OLC_MOBILE_BUILD_ROOT:-/Users/Shared/olc-build}
+BUILD_ROOT=${OLC_MOBILE_BUILD_ROOT:-"$HOME/Library/Caches/olc-build"}
 
 command -v gomobile >/dev/null 2>&1 || {
   echo "gomobile is required to build OlcMobile.xcframework" >&2
