@@ -15,7 +15,7 @@ class ControlPlaneStoreSchemaTest(unittest.TestCase):
     def test_initializes_transactional_schema(self) -> None:
         store = ControlPlaneStore(self.path)
 
-        self.assertEqual(store.schema_version(), 3)
+        self.assertEqual(store.schema_version(), 4)
         self.assertEqual(store.journal_mode(), "wal")
         self.assertTrue(store.foreign_keys_enabled())
         self.assertEqual(
@@ -33,6 +33,7 @@ class ControlPlaneStoreSchemaTest(unittest.TestCase):
                 "leases",
                 "operations",
                 "manifest_streams",
+                "restore_events",
             },
         )
 
