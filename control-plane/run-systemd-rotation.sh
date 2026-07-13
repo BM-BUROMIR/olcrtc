@@ -5,7 +5,6 @@ set -euo pipefail
 
 ROOT=${OLC_ROOT:-/opt/olc}
 CONFIG=${OLC_ROTATION_CONFIG:-"$CREDENTIALS_DIRECTORY/managed-rotation.json"}
-WB_CONFIG=${OLC_WB_ROTATION_CONFIG:-"$CREDENTIALS_DIRECTORY/managed-wb-rotation.json"}
 
 set -a
 # shellcheck disable=SC1090
@@ -17,10 +16,7 @@ export OLC_TELEMOST_COOKIES_PATH="$CREDENTIALS_DIRECTORY/telemost.cookies"
 export OLC_SSH_KNOWN_HOSTS_PATH="$CREDENTIALS_DIRECTORY/known_hosts"
 export OLC_DEPLOYMENT_PATH="$CREDENTIALS_DIRECTORY/deployment.json"
 export OLC_SERVER_BASE_CONFIG="$CREDENTIALS_DIRECTORY/server-base.yaml"
-export OLC_WB_BEARER_PATH="$CREDENTIALS_DIRECTORY/wb.bearer"
-export OLC_WB_ROOM_PATH="$CREDENTIALS_DIRECTORY/wb.room"
-export OLC_WB_SERVER_BASE_CONFIG="$CREDENTIALS_DIRECTORY/wb-server-base.yaml"
 export PYTHONPATH="$ROOT/control-plane"
 
 python3 "$ROOT/control-plane/managed_rotation.py" --config "$CONFIG" "$@"
-exec python3 "$ROOT/control-plane/managed_wb_rotation.py" --config "$WB_CONFIG" "$@"
+exec "$ROOT/control-plane/run-systemd-wb-rotation.sh" "$@"
