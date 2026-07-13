@@ -6,6 +6,12 @@ verifier="$repo_root/tools/ios-testflight/verify-package.sh"
 fixtures=$(mktemp -d "${TMPDIR:-/tmp}/olc-package-test.XXXXXX")
 trap 'rm -rf "$fixtures"' EXIT HUP INT TERM
 
+grep -F 'INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: "NO"' \
+  "$repo_root/apps/ios/OlcClientiOS/project.yml" >/dev/null || {
+  echo "missing export compliance declaration" >&2
+  exit 1
+}
+
 make_profiles() {
   destination=$1
   cat >"$destination" <<'JSON'

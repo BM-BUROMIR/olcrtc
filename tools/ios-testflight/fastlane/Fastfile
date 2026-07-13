@@ -9,6 +9,7 @@ require "open3"
 require "uri"
 require "base64"
 require "time"
+require "tmpdir"
 
 default_platform(:ios)
 
@@ -726,7 +727,31 @@ def archive_ipa
     build_options[:export_xcargs] = "-allowProvisioningUpdates"
   end
 
-  build_app(build_options)
+  ipa_path = build_app(build_options)
+  verify_exported_ipa(ipa_path)
+  ipa_path
+end
+
+def verify_exported_ipa(ipa_path)
+  Dir.mktmpdir("verify-ipa-", build_output_dir) do |directory|
+    sh("ditto", "-x", "-k", ipa_path, directory)
+    app_paths = Dir.glob(File.join(directory, "Payload", "*.app"))
+    UI.user_error!("exported IPA must contain exactly one app") unless app_paths.length == 1
+
+    app_path = app_paths.first
+    info = Plist.parse_xml(File.join(app_path, "Info.plist"))
+    unless info["ITSAppUsesNonExemptEncryption"] == false
+      UI.user_error!("exported IPA is missing ITSAppUsesNonExemptEncryption=false")
+    end
+
+    profiles = File.join(app_path, "BuiltInProfiles.local.json")
+    sh(
+      File.join(repo_root, "tools", "ios-testflight", "verify-package.sh"),
+      "--allow-unenrolled",
+      "--profiles", profiles,
+      "--scan-root", app_path
+    )
+  end
 end
 
 platform :ios do
