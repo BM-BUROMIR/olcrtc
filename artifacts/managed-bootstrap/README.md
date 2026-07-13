@@ -33,17 +33,21 @@ confirmed independently from serial output. The iPhone health check recovered at
 ## TestFlight artifact
 
 - Version: `0.1.0`
-- Build: `202607131616`
+- Build: `202607131711`
 - App Store Connect processing state: `VALID`
+- Minimum iOS version: `16.0`
 - Included managed profiles: Telemost and WB
 - Embedded static subscriptions: none
+- Embedded bootstrap credentials: none
 - App Group entitlement: present
 - Packet Tunnel Provider entitlement: present
 - Private-path scan of the exported IPA: passed
 
-The build embeds one private per-device bootstrap descriptor for the current owner cohort. A second
-tester requires a separate enrollment credential before distribution; sharing the owner's build as
-a universal credential is not an accepted production path.
+This is a universal binary. An update restores the current owner's per-device enrollment from the
+persisted VPN provider configuration, including the sibling managed profile under the strict
+`{device}/{profile}.olcb` contract. A clean install remains disconnected until a private enrollment
+file is imported. Every tester receives an independent key; no owner's credential is shared through
+TestFlight.
 
 ## 24-hour soak
 
