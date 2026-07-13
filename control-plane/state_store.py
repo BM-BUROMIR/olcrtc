@@ -266,3 +266,27 @@ class ControlPlaneStore:
             expires_at,
             lease.fencing_token,
         )
+
+    def release_lease(self, lease: Lease, *, now: dt.datetime) -> None:
+        now = _utc(now)
+        with self.transaction() as connection:
+            self.assert_current_lease(lease, now=now, connection=connection)
+            cursor = connection.execute(
+                """
+                UPDATE leases
+                SET expires_at = ?
+                WHERE resource_type = ? AND resource_id = ?
+                  AND owner_id = ? AND fencing_token = ?
+                """,
+                (
+                    _timestamp(now),
+                    lease.resource_type,
+                    lease.resource_id,
+                    lease.owner_id,
+                    lease.fencing_token,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise StaleFence(
+                    f"stale lease for {lease.resource_type} {lease.resource_id}"
+                )

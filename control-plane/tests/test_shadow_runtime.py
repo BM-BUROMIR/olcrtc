@@ -56,6 +56,20 @@ class ShadowRuntimeTest(unittest.TestCase):
             ).fetchone()
         self.assertEqual(generation, (1, 7, "active"))
 
+        next_envelope = {
+            **envelope,
+            "generation": 8,
+            "issued_at": "2026-07-13T12:00:01Z",
+        }
+        next_result = record_shadow_generation(
+            state_path=self.root / "control-plane.db",
+            object_root=self.root / "shadow-objects",
+            endpoint=endpoint,
+            envelope=next_envelope,
+            now=self.now + dt.timedelta(seconds=1),
+        )
+        self.assertEqual(next_result["generation"], 8)
+
 
 if __name__ == "__main__":
     unittest.main()

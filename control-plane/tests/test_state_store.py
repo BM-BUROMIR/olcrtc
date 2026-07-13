@@ -89,6 +89,22 @@ class LeaseTest(unittest.TestCase):
             now=self.now + dt.timedelta(seconds=31),
         )
 
+    def test_release_preserves_fence_and_allows_immediate_successor(self) -> None:
+        lease = self.store.acquire_lease(
+            "endpoint", "endpoint-1", "worker-a", now=self.now, ttl_seconds=30
+        )
+        self.store.release_lease(lease, now=self.now + dt.timedelta(seconds=1))
+
+        successor = self.store.acquire_lease(
+            "endpoint",
+            "endpoint-1",
+            "worker-b",
+            now=self.now + dt.timedelta(seconds=1),
+            ttl_seconds=30,
+        )
+
+        self.assertEqual(successor.fencing_token, lease.fencing_token + 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -155,6 +155,7 @@ def record_shadow_generation(
         lease=lease,
         now=now,
     )
+    store.release_lease(lease, now=now)
     return {
         "operation_id": active.operation_id,
         "phase": active.phase,
