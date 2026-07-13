@@ -12,6 +12,9 @@ WorkingDirectory=/opt/olc
 UMask=0077
 Environment=OLC_ROOT=/opt/olc
 Environment=OLC_ROTATION_CONFIG=/etc/olc-control-plane/managed-rotation.json
+Environment=HTTPS_PROXY=http://127.0.0.1:1082
+Environment=HTTP_PROXY=http://127.0.0.1:1082
+Environment=NO_PROXY=127.0.0.1,localhost
 LoadCredential=rotation.env:/etc/olc-control-plane/rotation.env
 LoadCredential=ssh_key:/etc/olc-control-plane/ssh_key
 LoadCredential=telemost.cookies:/etc/olc-control-plane/telemost.cookies

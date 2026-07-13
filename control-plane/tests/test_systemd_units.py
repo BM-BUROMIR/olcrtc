@@ -43,6 +43,9 @@ class SystemdUnitTest(unittest.TestCase):
 
         self.assertIn("Requires=olc-control-plane-xray.service", service)
         self.assertIn("After=network-online.target olc-control-plane-xray.service", service)
+        self.assertIn("Environment=HTTPS_PROXY=http://127.0.0.1:1082", service)
+        self.assertIn("Environment=HTTP_PROXY=http://127.0.0.1:1082", service)
+        self.assertIn("Environment=NO_PROXY=127.0.0.1,localhost", service)
 
     def test_private_egress_service_is_hardened_and_uses_a_credential(self) -> None:
         service = (ROOT / "systemd/olc-control-plane-xray.service").read_text()
