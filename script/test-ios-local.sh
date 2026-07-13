@@ -11,6 +11,7 @@ tests="$repo_root/apps/ios/OlcClientiOS/scripts"
 
 OLC_TEST_TMPDIR="$TMPDIR" ruby "$tests/ManagedProfilesGeneratorTest.rb"
 "$repo_root/tools/ios-testflight/test-verify-package.sh"
+OLC_TEST_TMPDIR="$TMPDIR" "$repo_root/script/test-ios-post-update-acceptance.sh"
 
 swiftc -parse-as-library -o "$work_dir/app-settings-smoke" \
   "$app/AppSettingsMigration.swift" \
