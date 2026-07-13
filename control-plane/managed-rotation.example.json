@@ -1,0 +1,16 @@
+{
+  "runtime_dir": ".secrets/runtime/managed-bootstrap",
+  "cookies_path": ".secrets/telemost-account/cookie-header.txt",
+  "deployment_path": ".secrets/olc-stand/deployment.json",
+  "olcrtc_binary": "build/olcrtc",
+  "ca_bundle": "/etc/ssl/cert.pem",
+  "yc_bucket": "olc-bootstrap",
+  "server": {
+    "host": "203.0.113.10",
+    "user": "ubuntu",
+    "ssh_key": ".secrets/ssh/olc_access",
+    "base_config": ".secrets/runtime/managed-bootstrap/server-base.yaml",
+    "config_path": "/etc/olc-bypass/tm-srv.yaml",
+    "service": "olc-telemost-srv.service"
+  }
+}

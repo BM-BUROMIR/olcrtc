@@ -14,9 +14,9 @@ class RotationError(RuntimeError):
 
 
 class Activator(Protocol):
-    def activate(self, payload: dict[str, Any]) -> str: ...
+    def activate(self, payload: dict[str, Any]) -> Any: ...
     def ready(self) -> None: ...
-    def rollback(self, token: str) -> None: ...
+    def rollback(self, token: Any) -> None: ...
 
 
 class RotationTransaction:
@@ -69,17 +69,26 @@ class RotationTransaction:
                 raise RotationError("generation is older than active generation")
 
             backup_token = None
+            publication = None
             try:
                 backup_token = self.activator.activate(payload)
                 self.activator.ready()
                 self.probe(payload)
-                self.publish(payload)
+                publication = self.publish(payload)
                 self._commit(payload)
                 return True
             except Exception as exc:
+                rollback_errors = []
+                if publication is not None and callable(getattr(publication, "rollback", None)):
+                    try:
+                        publication.rollback()
+                    except Exception as publication_exc:
+                        rollback_errors.append(f"publication rollback failed: {publication_exc}")
                 if backup_token is not None:
                     try:
                         self.activator.rollback(backup_token)
                     except Exception as rollback_exc:
-                        raise RotationError(f"{exc}; rollback failed: {rollback_exc}") from rollback_exc
+                        rollback_errors.append(f"server rollback failed: {rollback_exc}")
+                if rollback_errors:
+                    raise RotationError(f"{exc}; {'; '.join(rollback_errors)}") from exc
                 raise RotationError(str(exc)) from exc

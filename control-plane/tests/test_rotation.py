@@ -109,6 +109,22 @@ class RotationTest(unittest.TestCase):
         with self.assertRaisesRegex(RotationError, "generation"):
             tx.run(candidate(1))
 
+    def test_commit_failure_rolls_back_publication_before_server(self) -> None:
+        events = self.activator.events
+
+        class Publication:
+            def rollback(self) -> None:
+                events.append(("publication-rollback", None))
+
+        tx = self.transaction(publish=lambda _payload: Publication())
+        tx._commit = lambda _payload: (_ for _ in ()).throw(OSError("disk full"))
+        with self.assertRaisesRegex(RotationError, "disk full"):
+            tx.run(candidate())
+        self.assertEqual(
+            [name for name, _ in events[-2:]],
+            ["publication-rollback", "rollback"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

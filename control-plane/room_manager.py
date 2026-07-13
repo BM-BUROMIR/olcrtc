@@ -80,12 +80,17 @@ class RoomManager:
     def ensure_current(self) -> dict:
         """Гарантирует живую текущую комнату. Возвращает её. Создаёт новую при необходимости."""
         if self._needs_rotation():
-            room = self.client.create_room()
-            self.state["rooms"][room["uri"]] = room
-            self.state["current_uri"] = room["uri"]
-            self._gc()
-            self._save()
+            return self.rotate_now()
         return self.current()
+
+    def rotate_now(self) -> dict:
+        """Create and persist a fresh room even while the current room is alive."""
+        room = self.client.create_room()
+        self.state["rooms"][room["uri"]] = room
+        self.state["current_uri"] = room["uri"]
+        self._gc()
+        self._save()
+        return room
 
     def _gc(self):
         """Убирает из стора давно истёкшие комнаты (с запасом на overlap)."""

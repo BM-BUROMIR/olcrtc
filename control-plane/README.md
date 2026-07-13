@@ -83,4 +83,22 @@ cookie jar и реальный `deployment.json` — в `../.secrets/{telemost-a
 - #18 admin CLI (add server/account/client).
 - #19 **долгоживущие сессии / пул аккаунтов** — главный операционный риск: куки протухают,
   Yandex антифрод может лочить при смене IP. Нужен ВЫДЕЛЕННЫЙ аккаунт (не личный) + refresh.
-- демон-цикл: периодический `ensure_current` + при ротации `push_room.sh` на все серверы + republish.
+
+## Managed production rotation
+
+`managed_rotation.py` performs one fail-closed transaction: ensure or create a fresh
+room, atomically install the complete server config while preserving file ownership,
+wait for a stable service process, run HTTPS and 1 MiB SOCKS probes, publish encrypted
+objects for every authorized device, and commit the generation. Server and published
+objects are restored when a later phase fails.
+
+Runtime paths and credentials belong in a private config based on
+`managed-rotation.example.json`. On macOS, install the 30-minute scheduler with:
+
+```bash
+control-plane/install-managed-rotation-launchd.sh \
+  <private-rotation-config.json> <private-s3.env> <private-runtime-dir>
+```
+
+The generated plist and logs remain in the private runtime directory. The user
+LaunchAgents directory contains only a symlink, so the job is restored after login.

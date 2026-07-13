@@ -70,3 +70,47 @@ def put_object(access_key: str, secret_key: str, bucket: str, key: str,
     )
     with urllib.request.urlopen(req, timeout=20) as resp:
         return resp.status
+
+
+def delete_object(access_key: str, secret_key: str, bucket: str, key: str,
+                  now: datetime.datetime | None = None) -> int:
+    """DELETE an object with SigV4. Missing objects are also a successful S3 delete."""
+    now = now or datetime.datetime.now(datetime.timezone.utc)
+    amzdate = now.strftime("%Y%m%dT%H%M%SZ")
+    datestamp = now.strftime("%Y%m%d")
+    payload_hash = hashlib.sha256(b"").hexdigest()
+    canonical_uri = f"/{bucket}/{key}"
+    canonical_headers = (
+        f"host:{ENDPOINT_HOST}\n"
+        f"x-amz-content-sha256:{payload_hash}\n"
+        f"x-amz-date:{amzdate}\n"
+    )
+    signed_headers = "host;x-amz-content-sha256;x-amz-date"
+    canonical_request = "\n".join([
+        "DELETE", canonical_uri, "", canonical_headers, signed_headers, payload_hash,
+    ])
+    scope = f"{datestamp}/{REGION}/{SERVICE}/aws4_request"
+    string_to_sign = "\n".join([
+        "AWS4-HMAC-SHA256", amzdate, scope,
+        hashlib.sha256(canonical_request.encode()).hexdigest(),
+    ])
+    signature = hmac.new(
+        _signing_key(secret_key, datestamp),
+        string_to_sign.encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    request = urllib.request.Request(
+        f"https://{ENDPOINT_HOST}{canonical_uri}",
+        method="DELETE",
+        headers={
+            "Host": ENDPOINT_HOST,
+            "x-amz-date": amzdate,
+            "x-amz-content-sha256": payload_hash,
+            "Authorization": (
+                f"AWS4-HMAC-SHA256 Credential={access_key}/{scope}, "
+                f"SignedHeaders={signed_headers}, Signature={signature}"
+            ),
+        },
+    )
+    with urllib.request.urlopen(request, timeout=20) as response:
+        return response.status

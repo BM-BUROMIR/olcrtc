@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import secrets
+import urllib.error
 import urllib.request
 import datetime as dt
 from abc import ABC, abstractmethod
@@ -73,6 +74,14 @@ class Backend(ABC):
     def url_for(self, client_id: str) -> str:
         ...
 
+    @abstractmethod
+    def get(self, client_id: str) -> bytes | None:
+        """Read the current object, or return None when it does not exist."""
+
+    @abstractmethod
+    def delete(self, client_id: str) -> None:
+        """Delete an object during compensating rollback."""
+
 
 class FilesystemBackend(Backend):
     """Локальный тест: пишет в каталог, url = file://."""
@@ -92,6 +101,19 @@ class FilesystemBackend(Backend):
 
     def url_for(self, client_id: str) -> str:
         return "file://" + os.path.abspath(self._path(client_id))
+
+    def get(self, client_id: str) -> bytes | None:
+        try:
+            with open(self._path(client_id), "rb") as stream:
+                return stream.read()
+        except FileNotFoundError:
+            return None
+
+    def delete(self, client_id: str) -> None:
+        try:
+            os.unlink(self._path(client_id))
+        except FileNotFoundError:
+            pass
 
 
 class YandexStorageBackend(Backend):
@@ -122,6 +144,26 @@ class YandexStorageBackend(Backend):
 
     def url_for(self, client_id: str) -> str:
         return f"{self.BASE}/{self.bucket}/{client_id}.olcb"
+
+    def get(self, client_id: str) -> bytes | None:
+        try:
+            with urllib.request.urlopen(self.url_for(client_id), timeout=20) as response:
+                return response.read()
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return None
+            raise
+
+    def delete(self, client_id: str) -> None:
+        import yc_s3
+        code = yc_s3.delete_object(
+            self.access_key,
+            self.secret_key,
+            self.bucket,
+            f"{client_id}.olcb",
+        )
+        if code not in (200, 204):
+            raise RuntimeError(f"S3 DELETE returned {code}")
 
 
 # ── клиентская сторона (референс; Go/Swift-клиент это зеркалит) ─────────────────

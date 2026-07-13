@@ -100,8 +100,8 @@ class TelemostClient:
                 return resp.status == 200
         except urllib.error.HTTPError:
             return False
-        except Exception:
-            return False
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            raise TelemostError(f"room health check failed: {exc}") from exc
 
 
 def load_cookie_header(path: str) -> str:
