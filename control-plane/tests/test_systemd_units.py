@@ -52,7 +52,8 @@ class SystemdUnitTest(unittest.TestCase):
 
         self.assertIn("User=olc-control-plane-xray", service)
         self.assertIn("LoadCredential=config.json:", service)
-        self.assertIn("ExecStart=/usr/local/bin/xray run -config $CREDENTIALS_DIRECTORY/config.json", service)
+        self.assertIn("ExecStart=/usr/local/bin/xray run -config %d/config.json", service)
+        self.assertNotIn("$CREDENTIALS_DIRECTORY/config.json", service)
         self.assertIn("Restart=on-failure", service)
         self.assertIn("NoNewPrivileges=yes", service)
         self.assertIn("ProtectSystem=strict", service)
