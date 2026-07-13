@@ -9,10 +9,12 @@ import pathlib
 import re
 import secrets
 from typing import Any
+from urllib.parse import urlsplit
 
 
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")
 _KNOWN_PROFILES = frozenset({"telemost", "wb"})
+_PROFILE_NAMES = {"telemost": "Telemost", "wb": "WB"}
 
 
 class RegistryError(ValueError):
@@ -90,6 +92,30 @@ class DeviceRegistry:
         return [
             {key: value for key, value in record.items() if key != "client_key"}
             for record in sorted(self._load()["devices"].values(), key=lambda item: item["device_id"])
+        ]
+
+    def enrollment(self, device_id: str, object_base_url: str) -> list[dict[str, Any]]:
+        parsed = urlsplit(object_base_url)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.query or parsed.fragment:
+            raise RegistryError("object base URL must use HTTPS without query or fragment")
+        try:
+            record = self._load()["devices"][device_id]
+        except KeyError as exc:
+            raise RegistryError("device not found") from exc
+        if not record["enabled"]:
+            raise RegistryError("device is disabled")
+
+        base = object_base_url.rstrip("/")
+        return [
+            {
+                "id": profile_id,
+                "name": _PROFILE_NAMES[profile_id],
+                "bootstrap": {
+                    "url": f"{base}/{self.object_id(device_id, profile_id)}.olcb",
+                    "client_key": record["client_key"],
+                },
+            }
+            for profile_id in record["profiles"]
         ]
 
     @staticmethod

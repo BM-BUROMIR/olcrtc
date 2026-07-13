@@ -41,6 +41,27 @@ class DeviceRegistryTest(unittest.TestCase):
         self.assertNotIn(enrolled["client_key"], listing)
         self.assertNotIn("client_key", listing)
 
+    def test_exports_one_atomic_enrollment_for_authorized_profiles(self) -> None:
+        enrolled = self.registry.enroll("field-tester", ["telemost", "wb"])
+        enrollment = self.registry.enrollment(
+            "field-tester",
+            "https://storage.example.invalid/private-bootstrap",
+        )
+        self.assertEqual([profile["id"] for profile in enrollment], ["telemost", "wb"])
+        self.assertEqual(
+            enrollment[0]["bootstrap"]["url"],
+            "https://storage.example.invalid/private-bootstrap/field-tester/telemost.olcb",
+        )
+        self.assertEqual(enrollment[1]["bootstrap"]["client_key"], enrolled["client_key"])
+
+    def test_enrollment_rejects_disabled_device_and_non_https_base(self) -> None:
+        self.registry.enroll("field-tester", ["telemost"])
+        with self.assertRaisesRegex(RegistryError, "HTTPS"):
+            self.registry.enrollment("field-tester", "http://bootstrap.invalid")
+        self.registry.disable("field-tester")
+        with self.assertRaisesRegex(RegistryError, "disabled"):
+            self.registry.enrollment("field-tester", "https://bootstrap.invalid")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -103,6 +103,24 @@ control-plane/install-managed-rotation-launchd.sh \
 The generated plist and logs remain in the private runtime directory. The user
 LaunchAgents directory contains only a symlink, so the job is restored after login.
 
+### Per-device enrollment
+
+Issue a separate key for every device. The command writes one mode-`0600` JSON file containing
+all authorized managed profiles and prints only a secret-free summary:
+
+```bash
+python3 control-plane/device_enrollment.py \
+  --registry <private-devices.json> \
+  --device-id <device-id> \
+  --profiles telemost,wb \
+  --object-base-url https://<bootstrap-host>/<private-prefix> \
+  --output <private-enrollment.json>
+```
+
+Run managed rotation after enrollment so the device objects are published. Deliver the enrollment
+file through a private channel and remove the delivery copy after import. Disabling a device in the
+registry removes it from subsequent publications without rotating other devices' keys.
+
 ### Durable shadow mode
 
 The optional `shadow` section in `managed-rotation.example.json` records each successful legacy
