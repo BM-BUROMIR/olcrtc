@@ -1,0 +1,12 @@
+[Unit]
+Description=Schedule OLC managed WB rotation
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=30min
+RandomizedDelaySec=2min
+Persistent=true
+Unit=olc-control-plane-wb.service
+
+[Install]
+WantedBy=timers.target

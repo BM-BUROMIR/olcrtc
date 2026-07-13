@@ -1,5 +1,5 @@
 [Unit]
-Description=OLC durable control-plane shadow rotation
+Description=OLC managed WB rotation
 After=network-online.target olc-control-plane-xray.service
 Wants=network-online.target
 Requires=olc-control-plane-xray.service
@@ -16,12 +16,12 @@ Environment=HTTP_PROXY=http://127.0.0.1:1082
 Environment=NO_PROXY=127.0.0.1,localhost
 LoadCredential=rotation.env:/etc/olc-control-plane/rotation.env
 LoadCredential=ssh_key:/etc/olc-control-plane/ssh_key
-LoadCredential=telemost.cookies:/etc/olc-control-plane/telemost.cookies
 LoadCredential=known_hosts:/etc/olc-control-plane/known_hosts
-LoadCredential=deployment.json:/etc/olc-control-plane/deployment.json
-LoadCredential=server-base.yaml:/etc/olc-control-plane/server-base.yaml
-LoadCredential=managed-rotation.json:/etc/olc-control-plane/managed-rotation.json
-ExecStart=/opt/olc/control-plane/run-systemd-rotation.sh
+LoadCredential=managed-wb-rotation.json:/etc/olc-control-plane/managed-wb-rotation.json
+LoadCredential=wb.bearer:/etc/olc-control-plane/wb.bearer
+LoadCredential=wb.room:/etc/olc-control-plane/wb.room
+LoadCredential=wb-server-base.yaml:/etc/olc-control-plane/wb-server-base.yaml
+ExecStart=/opt/olc/control-plane/run-systemd-wb-rotation.sh
 ExecStartPost=/opt/olc/control-plane/backup-systemd-state.sh
 TimeoutStartSec=10min
 NoNewPrivileges=yes
