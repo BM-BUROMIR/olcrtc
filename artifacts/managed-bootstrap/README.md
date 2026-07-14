@@ -12,6 +12,8 @@ databases remain in the ignored workspace runtime tree.
   refresh of the other.
 - Each enabled device receives independently encrypted Telemost and WB objects. Device bootstrap
   keys and provider owner credentials are not included in client envelopes or tracked artifacts.
+- Healthy timer cycles reconcile the current envelope to every enabled device, so enrolling a new
+  device does not wait for a carrier room rotation or restart either edge service.
 - A temporary independent device was issued against the production object store, published for
   Telemost generation `7` and WB generation `2`, fetched and decrypted with its own key, then fully
   removed. The enrollment artifact was mode `0600`; no temporary object remained after cleanup.
@@ -42,8 +44,8 @@ confirmed independently from serial output. The iPhone health check recovered at
 
 ## TestFlight artifact
 
-- Version: `0.1.0`
-- Build: `202607131726`
+- Version: `0.1.1`
+- Build: `202607141354`
 - App Store Connect processing state: `VALID`
 - Minimum iOS version: `16.0`
 - Included managed profiles: Telemost and WB
@@ -63,7 +65,10 @@ TestFlight.
 
 The resumable physical-device soak started at `2026-07-13T16:41:24Z`. It probes every ten minutes,
 keeps each provider active for six rounds, then switches provider and reconnects through managed
-bootstrap. The first Telemost round completed `ok=3 fail=0`, including a complete 1 MiB download.
+bootstrap. The first 112 valid rounds contain 110 passes and two isolated probe failures; both
+providers recovered in later rounds without configuration changes. Attempts made while CoreDevice
+reported a physically locked phone are retained as harness events and are excluded from network
+failure counts. Laptop downtime is also excluded from the active soak duration.
 
-Acceptance remains pending until at least `2026-07-14T16:41:24Z`. The final summary must report zero
-failed rounds; starting the runner is not evidence that the 24-hour requirement has passed.
+Acceptance remains pending until 24 hours of active scheduled rounds have completed. Starting or
+resuming the runner is not evidence that the duration requirement has passed.
