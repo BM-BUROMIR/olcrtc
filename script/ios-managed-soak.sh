@@ -56,6 +56,7 @@ start_file="$output/start-epoch.txt"
 cycle_file="$output/next-cycle.txt"
 previous_profile_file="$output/previous-profile.txt"
 results_file="$output/results.jsonl"
+events_file="$output/harness-events.jsonl"
 
 if [ ! -f "$start_file" ]; then
   date +%s >"$start_file"
@@ -64,6 +65,41 @@ if [ ! -f "$start_file" ]; then
 fi
 start_epoch=$(cat "$start_file")
 cycle=$(cat "$cycle_file")
+touch "$results_file" "$events_file"
+
+now=$(date +%s)
+expected_epoch=$((start_epoch + cycle * interval))
+if [ "$cycle" -gt 0 ] && [ "$now" -gt $((expected_epoch + interval)) ]; then
+  pause_seconds=$((now - expected_epoch))
+  start_epoch=$((start_epoch + pause_seconds))
+  printf '%s\n' "$start_epoch" >"$start_file"
+  jq -n -c \
+    --arg type resume \
+    --arg at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    --argjson cycle "$cycle" \
+    --argjson pause_seconds "$pause_seconds" \
+    '{type:$type,at:$at,cycle:$cycle,pause_seconds:$pause_seconds}' \
+    >>"$events_file"
+fi
+
+record_device_locked() {
+  phase=$1
+  event_file=$2
+  jq -n -c \
+    --arg type blocked \
+    --arg reason device_locked \
+    --arg phase "$phase" \
+    --arg at "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+    --argjson cycle "$cycle" \
+    '{type:$type,reason:$reason,phase:$phase,at:$at,cycle:$cycle}' \
+    >"$event_file"
+  cat "$event_file" >>"$events_file"
+  exit 75
+}
+
+is_device_locked() {
+  grep -E 'has not been unlocked recently|CoreDevice error 10003|RemotePairing.*1016' "$1" >/dev/null 2>&1
+}
 
 while :; do
   now=$(date +%s)
@@ -101,6 +137,9 @@ while :; do
       --json-output "$iteration_dir/launch.json" \
       >"$iteration_dir/launch.log" 2>&1 || launch_status=$?
   fi
+  if [ "$launch_status" -ne 0 ] && is_device_locked "$iteration_dir/launch.log"; then
+    record_device_locked launch "$iteration_dir/harness-event.json"
+  fi
 
   [ "$probe_wait" -eq 0 ] || sleep "$probe_wait"
   copy_status=0
@@ -112,6 +151,9 @@ while :; do
     --destination "$iteration_dir/app-group" \
     --json-output "$iteration_dir/copy.json" \
     >"$iteration_dir/copy.log" 2>&1 || copy_status=$?
+  if [ "$copy_status" -ne 0 ] && is_device_locked "$iteration_dir/copy.log"; then
+    record_device_locked copy "$iteration_dir/harness-event.json"
+  fi
 
   app_log="$iteration_dir/app-group/app.log"
   probe_status=missing
