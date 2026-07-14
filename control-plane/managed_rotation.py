@@ -105,6 +105,16 @@ class DeviceEnvelopePublisher:
             raise RuntimeError("bootstrap rollback failed: " + "; ".join(rollback_errors))
 
 
+def reconcile_active_envelope(
+    registry: DeviceRegistry,
+    backend: ObjectBackend,
+    profile_id: str,
+    active_envelope: dict[str, Any],
+) -> int:
+    """Publish a healthy envelope to the registry without rotating the carrier."""
+    return DeviceEnvelopePublisher(registry, backend).publish(profile_id, active_envelope)
+
+
 @dataclass(frozen=True)
 class Publication:
     count: int
@@ -390,10 +400,22 @@ def main() -> int:
     envelope_path = runtime / "telemost-envelope.json"
     active = _load_json(envelope_path)
     now = dt.datetime.now(dt.timezone.utc)
+    backend = YandexStorageBackend(
+        config["yc_bucket"],
+        access_key=access_key,
+        secret_key=secret_key,
+    )
+    registry = DeviceRegistry(runtime / "devices.json")
     if not args.force and not should_rotate(
         active, room["uri"], now=now, refresh_before=dt.timedelta(hours=2)
     ):
-        print(json.dumps({"status": "healthy", "profile": "telemost", "generation": active["generation"]}))
+        published = reconcile_active_envelope(registry, backend, "telemost", active)
+        print(json.dumps({
+            "status": "healthy",
+            "profile": "telemost",
+            "generation": active["generation"],
+            "published_devices": published,
+        }))
         return 0
 
     generation = int(active.get("generation", 0) if active else 0) + 1
@@ -418,12 +440,7 @@ def main() -> int:
         service=server.get("service", "olc-telemost-srv.service"),
         work_dir=runtime,
     )
-    backend = YandexStorageBackend(
-        config["yc_bucket"],
-        access_key=access_key,
-        secret_key=secret_key,
-    )
-    publisher = DeviceEnvelopePublisher(DeviceRegistry(runtime / "devices.json"), backend)
+    publisher = DeviceEnvelopePublisher(registry, backend)
 
     def publish(payload: dict[str, Any]) -> Publication:
         publication = publisher.publish_transactionally("telemost", payload)
@@ -455,7 +472,7 @@ def main() -> int:
     print(json.dumps({
         "status": "rotated" if changed else "unchanged",
         "profile": "telemost", "generation": generation,
-        "published_devices": len(DeviceRegistry(runtime / "devices.json").publishable("telemost")),
+        "published_devices": len(registry.publishable("telemost")),
         "shadow": shadow_result,
     }))
     return 0

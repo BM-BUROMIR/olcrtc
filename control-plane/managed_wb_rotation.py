@@ -24,6 +24,7 @@ from managed_rotation import (
     SSHServerActivator,
     _load_json,
     _replace_private_json,
+    reconcile_active_envelope,
     record_shadow_if_configured,
     should_rotate,
 )
@@ -125,8 +126,20 @@ def main() -> int:
     active = _load_json(envelope_path)
     now = dt.datetime.now(dt.timezone.utc)
     refresh_before = dt.timedelta(hours=float(config.get("refresh_before_hours", 2)))
+    backend = YandexStorageBackend(
+        config["yc_bucket"],
+        access_key=access_key,
+        secret_key=secret_key,
+    )
+    registry = DeviceRegistry(runtime / "devices.json")
     if not args.force and not should_rotate(active, room_id, now=now, refresh_before=refresh_before):
-        print(json.dumps({"status": "healthy", "profile": "wb", "generation": active["generation"]}))
+        published = reconcile_active_envelope(registry, backend, "wb", active)
+        print(json.dumps({
+            "status": "healthy",
+            "profile": "wb",
+            "generation": active["generation"],
+            "published_devices": published,
+        }))
         return 0
 
     generation = int(active.get("generation", 0) if active else 0) + 1
@@ -151,12 +164,6 @@ def main() -> int:
         work_dir=runtime / "wb",
         auth_token_path=bearer_path,
     )
-    backend = YandexStorageBackend(
-        config["yc_bucket"],
-        access_key=access_key,
-        secret_key=secret_key,
-    )
-    registry = DeviceRegistry(runtime / "devices.json")
     publisher = DeviceEnvelopePublisher(registry, backend)
 
     def publish(payload: dict[str, Any]) -> Publication:

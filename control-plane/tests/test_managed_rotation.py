@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from unittest import mock
 
+import managed_rotation
 from bootstrap import decrypt_subscription, encrypt_subscription
 from device_registry import DeviceRegistry
 from managed_rotation import (
@@ -116,6 +117,23 @@ class DevicePublisherTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "upload failed"):
             publisher.publish("telemost", {"generation": 2})
         self.assertEqual(backend.objects, {})
+
+    def test_healthy_cycle_publishes_active_envelope_to_new_device(self) -> None:
+        active = {"generation": 4, "profile_id": "telemost"}
+        backend = MemoryBackend()
+        DeviceEnvelopePublisher(self.registry, backend).publish("telemost", active)
+        third = self.registry.enroll("third", ["telemost"])
+
+        reconcile = getattr(managed_rotation, "reconcile_active_envelope", None)
+        self.assertTrue(callable(reconcile), "healthy envelope reconcile is missing")
+        count = reconcile(self.registry, backend, "telemost", active)
+
+        self.assertEqual(count, 3)
+        object_id = DeviceRegistry.object_id("third", "telemost")
+        published = decrypt_subscription(
+            backend.objects[object_id], bytes.fromhex(third["client_key"])
+        )
+        self.assertEqual(published["generation"], 4)
 
 
 class ServerActivatorTest(unittest.TestCase):
