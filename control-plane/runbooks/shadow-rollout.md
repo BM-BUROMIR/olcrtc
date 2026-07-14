@@ -1,5 +1,13 @@
 # Always-on shadow rollout
 
+## Operator network safety
+
+`Happ Plus` on the operator workstation is an external prerequisite and must remain connected.
+Do not stop, start, restart, remove, reconfigure, or change routes for it during deployment,
+diagnostics, or SSH recovery. Read-only status checks are allowed. If its routing prevents SSH,
+use another approved management path; do not mutate `Happ Plus` unless the user explicitly names
+and authorizes that exact action in the current instruction.
+
 ## Preconditions
 
 - Use an always-on Linux host with stable non-RU egress for the dedicated Telemost account.

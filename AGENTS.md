@@ -1,6 +1,9 @@
 # olcrtc dev
 
 - read all docs (cat docs/-.md) before coding
+- never stop, start, restart, remove, reconfigure, or change routes for the user's `Happ Plus`
+  VPN; read-only status checks are allowed, and any mutation requires an explicit instruction
+  naming the exact `Happ Plus` action in the current user message
 - kiss, minimal, no bloat, no verbose code
 - no em-dashes (-), only hyphens (-)
 - wtfpl license
