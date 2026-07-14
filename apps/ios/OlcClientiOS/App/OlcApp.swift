@@ -46,13 +46,8 @@ enum AppDiag {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let file = dir.appendingPathComponent("app.log")
         guard let data = "\(Date()) \(message)\n".data(using: .utf8) else { return }
-        if let handle = try? FileHandle(forWritingTo: file) {
-            handle.seekToEndOfFile()
-            handle.write(data)
-            try? handle.close()
-        } else {
-            try? data.write(to: file, options: .atomic)
-        }
+        // ai-generated: keeps application diagnostics bounded across TestFlight updates.
+        BoundedLog.append(data, to: file, maxBytes: 1_048_576)
     }
 }
 
@@ -406,6 +401,18 @@ final class VPN: ObservableObject {
         return ManagedTunnelDescriptor(providerConfiguration: configuration)
     }
 
+    // ai-generated: exposes the installed static credential only for one-time managed migration.
+    func legacyConfigurationYAML() -> String? {
+        guard managedConfiguration() == nil,
+              let configuration = (mgr?.protocolConfiguration as? NETunnelProviderProtocol)?
+                .providerConfiguration,
+              let yaml = configuration["cnc_yaml"] as? String,
+              !yaml.isEmpty else {
+            return nil
+        }
+        return yaml
+    }
+
     func disconnect() {
         Task { await disableOnDemandAndStop() }
     }
@@ -543,6 +550,21 @@ struct ContentView: View {
             Self.applyProfileOverride(to: profiles)
             await vpn.load()
             AppDiag.log("task vpn status=\(vpn.raw)")
+            if let legacyYAML = vpn.legacyConfigurationYAML() {
+                if let enrollment = LegacyEnrollmentMigration.resolve(
+                    bundle: .main,
+                    legacyYAML: legacyYAML
+                ) {
+                    do {
+                        let migrated = try profiles.addManagedProfilesFromJSON(json: enrollment)
+                        AppDiag.log("restored legacy enrollment profiles=\(migrated.map(\.id).joined(separator: ","))")
+                    } catch {
+                        AppDiag.log("legacy enrollment rejected error=\(error.localizedDescription)")
+                    }
+                } else {
+                    AppDiag.log("legacy enrollment unavailable yaml_len=\(legacyYAML.count)")
+                }
+            }
             if let existing = vpn.managedConfiguration() {
                 let restored = profiles.restoreManagedEnrollment(from: existing)
                 if !restored.isEmpty {

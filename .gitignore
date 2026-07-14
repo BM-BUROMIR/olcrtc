@@ -240,6 +240,7 @@ profile.cov
 .worktrees/
 apps/ios/OlcClientiOS/App/BuiltInProfiles.local.json
 apps/ios/OlcClientiOS/App/ManagedProfiles.local.json
+apps/ios/OlcClientiOS/App/LegacyEnrollment.*.olcm
 apps/ios/OlcClientiOS/build/
 apps/ios/OlcClientiOS/DerivedData/
 apps/ios/OlcClientiOS/**/*.xcarchive

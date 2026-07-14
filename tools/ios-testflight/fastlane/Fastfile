@@ -93,6 +93,34 @@ def generate_profiles
   end
 end
 
+# ai-generated: creates an encrypted update credential without embedding plaintext enrollment.
+def generate_legacy_enrollment_migration
+  output_pattern = File.join(ios_app_dir, "App", "LegacyEnrollment.update-*.olcm")
+  Dir.glob(output_pattern).each { |path| FileUtils.rm_f(path) }
+  legacy_yaml_paths = ENV["OLC_IOS_LEGACY_YAML_PATHS"].to_s
+                         .split(File::PATH_SEPARATOR)
+                         .map(&:strip)
+                         .reject(&:empty?)
+  single_path = ENV["OLC_IOS_LEGACY_YAML_PATH"].to_s.strip
+  legacy_yaml_paths << single_path unless single_path.empty?
+  enrollment = ENV["OLC_IOS_LEGACY_ENROLLMENT_PATH"].to_s.strip
+  return if legacy_yaml_paths.empty? && enrollment.empty?
+
+  UI.user_error!("legacy migration requires a universal build") unless universal_enrollment_build?
+  UI.user_error!("legacy migration YAML path is required") if legacy_yaml_paths.empty?
+  UI.user_error!("OLC_IOS_LEGACY_ENROLLMENT_PATH is required") if enrollment.empty?
+  UI.user_error!("legacy enrollment file is missing") unless File.file?(enrollment)
+  legacy_yaml_paths.each_with_index do |legacy_yaml, index|
+    UI.user_error!("legacy YAML file is missing") unless File.file?(legacy_yaml)
+    sh(
+      File.join(ios_app_dir, "scripts", "generate-legacy-enrollment.rb"),
+      "--legacy-yaml", legacy_yaml,
+      "--enrollment", enrollment,
+      "--output", File.join(ios_app_dir, "App", "LegacyEnrollment.update-#{index + 1}.olcm")
+    )
+  end
+end
+
 def verify_builtin_profiles
   required = ENV.fetch("OLC_REQUIRED_BUILTIN_PROFILES", "telemost,wb")
                 .split(",")
@@ -134,6 +162,7 @@ end
 def prepare_ios_project(rebuild_mobile: false)
   apply_identifiers
   generate_profiles
+  generate_legacy_enrollment_migration
   verify_builtin_profiles
   rebuild_mobile_framework if rebuild_mobile
   verify_package

@@ -11,6 +11,8 @@
 		06A189E9E0F34827C94D01D3 /* BuiltInProfiles.local.json in Resources */ = {isa = PBXBuildFile; fileRef = 26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */; };
 		1A2E0B8F75DC41262E0F10AB /* BootstrapResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 70276BDC1E8E718CAC204682 /* BootstrapResolver.swift */; };
 		2640167453FDFC933682A615 /* ManagedProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B080973D9A28CCE7D0C7187 /* ManagedProfile.swift */; };
+		2D692359092711961EACE003 /* LegacyEnrollmentMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B5CE11417ECCAA62F793AF4 /* LegacyEnrollmentMigration.swift */; };
+		3FE0D6DE44135D0F651384F7 /* BoundedLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDBB71B69EB55246ECAD1C8 /* BoundedLog.swift */; };
 		42FEE806D7231B30FC78D94A /* OlcApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 543F0BA2D4AC63B3C48EE17C /* OlcApp.swift */; };
 		4D58A7BA3E410A696F8588D6 /* Tun2SocksKit in Frameworks */ = {isa = PBXBuildFile; productRef = F1B98BCCA30EC2559691FB30 /* Tun2SocksKit */; };
 		5B2E55104D153F89189D76DC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */; };
@@ -21,6 +23,7 @@
 		AC6155AA53877769927EEEF4 /* OlcMobile.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7703B6A4658B0600D48485E8 /* OlcMobile.xcframework */; };
 		AEF550C4F0252BE4E30DA96B /* OlcTunnel.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 805713DA9C02E019EC68262A /* OlcTunnel.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B86494C27EBEB267A315BCB9 /* AppSettingsMigration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7729EABF32F4FA84522F8B8B /* AppSettingsMigration.swift */; };
+		CA8EDAD479FDC304EC13CD8F /* BoundedLog.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBDBB71B69EB55246ECAD1C8 /* BoundedLog.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -49,6 +52,7 @@
 
 /* Begin PBXFileReference section */
 		0B080973D9A28CCE7D0C7187 /* ManagedProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManagedProfile.swift; sourceTree = "<group>"; };
+		0B5CE11417ECCAA62F793AF4 /* LegacyEnrollmentMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyEnrollmentMigration.swift; sourceTree = "<group>"; };
 		117E9305E51B37EC77BEF651 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		1D97A84452A41E3D7E2DDD57 /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
 		26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BuiltInProfiles.local.json; sourceTree = "<group>"; };
@@ -59,6 +63,7 @@
 		7729EABF32F4FA84522F8B8B /* AppSettingsMigration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSettingsMigration.swift; sourceTree = "<group>"; };
 		805713DA9C02E019EC68262A /* OlcTunnel.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = OlcTunnel.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		BBDBB71B69EB55246ECAD1C8 /* BoundedLog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BoundedLog.swift; sourceTree = "<group>"; };
 		DE7589F7854DEBD027356A56 /* PacketTunnelProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PacketTunnelProvider.swift; sourceTree = "<group>"; };
 		E09CCC5AD49C494D620AA71D /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 		E9659F84920ABDF148F46B17 /* OlcClientiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OlcClientiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -129,7 +134,9 @@
 				7729EABF32F4FA84522F8B8B /* AppSettingsMigration.swift */,
 				8EE39E5D67AEED4209CEA4FE /* Assets.xcassets */,
 				70276BDC1E8E718CAC204682 /* BootstrapResolver.swift */,
+				BBDBB71B69EB55246ECAD1C8 /* BoundedLog.swift */,
 				26D884B26797725AD918A5D8 /* BuiltInProfiles.local.json */,
+				0B5CE11417ECCAA62F793AF4 /* LegacyEnrollmentMigration.swift */,
 				0B080973D9A28CCE7D0C7187 /* ManagedProfile.swift */,
 				543F0BA2D4AC63B3C48EE17C /* OlcApp.swift */,
 				1D97A84452A41E3D7E2DDD57 /* ProfileStore.swift */,
@@ -240,6 +247,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				1A2E0B8F75DC41262E0F10AB /* BootstrapResolver.swift in Sources */,
+				3FE0D6DE44135D0F651384F7 /* BoundedLog.swift in Sources */,
 				2640167453FDFC933682A615 /* ManagedProfile.swift in Sources */,
 				A85D0B14D2F5487CDC34B664 /* PacketTunnelProvider.swift in Sources */,
 			);
@@ -251,6 +259,8 @@
 			files = (
 				B86494C27EBEB267A315BCB9 /* AppSettingsMigration.swift in Sources */,
 				660808A3EA1B33DE5095C30C /* BootstrapResolver.swift in Sources */,
+				CA8EDAD479FDC304EC13CD8F /* BoundedLog.swift in Sources */,
+				2D692359092711961EACE003 /* LegacyEnrollmentMigration.swift in Sources */,
 				001FEEA0632F6AD0C63512E9 /* ManagedProfile.swift in Sources */,
 				42FEE806D7231B30FC78D94A /* OlcApp.swift in Sources */,
 				A24917520669A7994816EF2B /* ProfileStore.swift in Sources */,
@@ -344,7 +354,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -432,7 +442,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 0.1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				OTHER_LDFLAGS = "-lresolv";

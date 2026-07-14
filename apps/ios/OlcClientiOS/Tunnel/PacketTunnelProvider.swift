@@ -26,11 +26,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
         let f = dir.appendingPathComponent("tunnel.log")
         let line = "\(Date()) \(m)\n"
         guard let d = line.data(using: .utf8) else { return }
-        if let h = try? FileHandle(forWritingTo: f) {
-            h.seekToEndOfFile(); h.write(d); try? h.close()
-        } else {
-            try? d.write(to: f)
-        }
+        // ai-generated: keeps extension diagnostics bounded across on-demand retries.
+        BoundedLog.append(d, to: f, maxBytes: 1_048_576)
     }
 
     override func startTunnel(options: [String: NSObject]?) async throws {
@@ -66,6 +63,8 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
 
         // перехват stderr/stdout Go-cnc → файл (внутренние логи olcrtc: ICE/vp8channel/welcome)
         let cncLog = (dir as NSString).appendingPathComponent("cnc-stderr.log")
+        // ai-generated: rotates the native log before attaching a new tunnel process.
+        BoundedLog.rotateIfNeeded(URL(fileURLWithPath: cncLog), maxBytes: 8_388_608)
         freopen(cncLog, "a+", stderr)
         freopen(cncLog, "a+", stdout)
         dbg("cnc stderr → cnc-stderr.log")
