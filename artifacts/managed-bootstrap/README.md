@@ -55,9 +55,10 @@ confirmed independently from serial output. The iPhone health check recovered at
 - Packet Tunnel Provider entitlement: present
 - Private-path scan of the exported IPA: passed
 - External field-test group: current build attached
-- Beta App Review: `WAITING_FOR_REVIEW`
+- Beta App Review: `APPROVED`
 - Review access: dedicated per-device Telemost/WB enrollment; owner and field-tester keys are not
-  shared with Apple
+  shared with Apple. The review device was disabled and both review bootstrap objects were deleted
+  after approval.
 
 This is a universal binary. An update restores the current owner's per-device enrollment from the
 persisted VPN provider configuration, including the sibling managed profile under the strict
