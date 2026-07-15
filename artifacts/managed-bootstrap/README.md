@@ -67,12 +67,19 @@ TestFlight.
 
 ## 24-hour soak
 
-The resumable physical-device soak started at `2026-07-13T16:41:24Z`. It probes every ten minutes,
-keeps each provider active for six rounds, then switches provider and reconnects through managed
-bootstrap. The first 112 valid rounds contain 110 passes and two isolated probe failures; both
-providers recovered in later rounds without configuration changes. Attempts made while CoreDevice
-reported a physically locked phone are retained as harness events and are excluded from network
-failure counts. Laptop downtime is also excluded from the active soak duration.
+The resumable physical-device soak completed 24 hours of active scheduled time with 144 rounds: 72
+Telemost and 72 WB. The raw harness summary reports 141 passes and three failures. One WB result was
+a harness timing false negative: retries pushed the probe past the fixed 120-second collection
+window, and the cumulative device log later recorded the same round as `ok=3 fail=0`. The corrected
+network result is therefore 142/144 (`98.61%`): Telemost 71/72 and WB 71/72.
 
-Acceptance remains pending until 24 hours of active scheduled rounds have completed. Starting or
-resuming the runner is not evidence that the duration requirement has passed.
+Both real degraded rounds retained an active iOS VPN status and partial connectivity. The Telemost
+round passed both short HTTPS probes but its 1 MiB transfer timed out. The WB round completed the 1
+MiB transfer but its short HTTPS probes timed out after a managed reconnect. In both cases the next
+scheduled round passed without manual intervention or configuration changes.
+
+Successful 1 MiB transfers had median throughput of about `0.97 Mbit/s` on Telemost and
+`0.86 Mbit/s` on WB. The observed successful range was approximately `0.41-1.67 Mbit/s` on
+Telemost and `0.44-1.41 Mbit/s` on WB. Attempts made while CoreDevice reported a physically locked
+phone remain separate harness events; laptop downtime is excluded from active soak duration. The
+LaunchAgent unloaded after artifact collection.
