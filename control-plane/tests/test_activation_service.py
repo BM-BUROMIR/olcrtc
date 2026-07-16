@@ -2,11 +2,15 @@ import datetime as dt
 import json
 import pathlib
 import tempfile
+import threading
 import unittest
+import urllib.error
+import urllib.request
 
 from activation_grants import ActivationGrantStore
-from activation_service import ActivationService
+from activation_service import ActivationService, handler
 from device_registry import DeviceRegistry
+from http.server import ThreadingHTTPServer
 
 
 UTC = dt.timezone.utc
@@ -59,6 +63,20 @@ class ActivationServiceTest(unittest.TestCase):
         self.assertEqual((status, payload), (400, {"error": "invalid_request"}))
         status, payload = self.service.exchange(b"{" + b"x" * 5000)
         self.assertEqual((status, payload), (413, {"error": "request_too_large"}))
+
+    def test_http_health_endpoint_is_cacheless_and_does_not_expose_state(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler(self.service))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{server.server_port}/healthz"
+        ) as response:
+            self.assertEqual(response.status, 200)
+            self.assertEqual(response.headers["Cache-Control"], "no-store")
+            self.assertEqual(json.load(response), {"status": "ok"})
 
 
 if __name__ == "__main__":

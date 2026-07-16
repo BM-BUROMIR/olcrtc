@@ -1,0 +1,31 @@
+[Unit]
+Description=OLC private device activation service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=olc-control-plane
+Group=olc-control-plane
+StateDirectory=olc-control-plane
+UMask=0077
+EnvironmentFile=/etc/olc-control-plane/activation.env
+ExecStart=/usr/bin/python3 /opt/olc/control-plane/activation_service.py --grants-db /var/lib/olc-control-plane/activation.db --device-registry /var/lib/olc-control-plane/devices.json --object-base-url ${OLC_OBJECT_BASE_URL} --bind 127.0.0.1 --port 8787
+Restart=on-failure
+RestartSec=5s
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

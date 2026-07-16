@@ -74,6 +74,12 @@ def handler(service: ActivationService) -> type[BaseHTTPRequestHandler]:
     class RequestHandler(BaseHTTPRequestHandler):
         server_version = "OLCActivation/1"
 
+        def do_GET(self) -> None:  # noqa: N802
+            if self.path == "/healthz":
+                self._reply(HTTPStatus.OK, {"status": "ok"})
+                return
+            self._reply(HTTPStatus.NOT_FOUND, {"error": "not_found"})
+
         def do_POST(self) -> None:  # noqa: N802
             if self.path != "/v1/activate":
                 self._reply(HTTPStatus.NOT_FOUND, {"error": "not_found"})

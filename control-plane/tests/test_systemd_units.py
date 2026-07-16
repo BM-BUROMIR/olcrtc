@@ -6,6 +6,26 @@ ROOT = pathlib.Path(__file__).parents[1]
 
 
 class SystemdUnitTest(unittest.TestCase):
+    def test_activation_service_is_hardened_and_uses_durable_state(self) -> None:
+        service = (ROOT / "systemd/olc-activation.service").read_text()
+
+        self.assertIn("Type=simple", service)
+        self.assertIn("User=olc-control-plane", service)
+        self.assertIn("Group=olc-control-plane", service)
+        self.assertIn("StateDirectory=olc-control-plane", service)
+        self.assertIn("UMask=0077", service)
+        self.assertIn("EnvironmentFile=/etc/olc-control-plane/activation.env", service)
+        self.assertIn("--grants-db /var/lib/olc-control-plane/activation.db", service)
+        self.assertIn("--device-registry /var/lib/olc-control-plane/devices.json", service)
+        self.assertIn("--bind 127.0.0.1", service)
+        self.assertIn("--port 8787", service)
+        self.assertIn("Restart=on-failure", service)
+        self.assertIn("NoNewPrivileges=yes", service)
+        self.assertIn("ProtectSystem=strict", service)
+        self.assertIn("PrivateTmp=yes", service)
+        self.assertIn("RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6", service)
+        self.assertNotIn("/Users/", service)
+
     def test_shadow_service_is_hardened_and_uses_credentials(self) -> None:
         service = (ROOT / "systemd/olc-control-plane-shadow.service").read_text()
 
