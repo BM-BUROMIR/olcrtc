@@ -10,7 +10,8 @@ Group=olc-control-plane
 StateDirectory=olc-control-plane
 UMask=0077
 EnvironmentFile=/etc/olc-control-plane/activation.env
-ExecStart=/usr/bin/python3 /opt/olc/control-plane/activation_service.py --grants-db /var/lib/olc-control-plane/activation.db --device-registry /var/lib/olc-control-plane/devices.json --object-base-url ${OLC_OBJECT_BASE_URL} --bind 127.0.0.1 --port 8787
+LoadCredential=activation-admin-token:/etc/olc-control-plane/activation-admin-token
+ExecStart=/usr/bin/python3 /opt/olc/control-plane/activation_service.py --grants-db /var/lib/olc-control-plane/activation.db --device-registry /var/lib/olc-control-plane/devices.json --object-base-url ${OLC_OBJECT_BASE_URL} --admin-token-file ${CREDENTIALS_DIRECTORY}/activation-admin-token --bind 127.0.0.1 --port 8787
 Restart=on-failure
 RestartSec=5s
 

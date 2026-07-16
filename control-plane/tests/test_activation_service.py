@@ -29,6 +29,7 @@ class ActivationServiceTest(unittest.TestCase):
             grants=self.grants,
             registry=self.registry,
             object_base_url="https://storage.example.invalid/bootstrap",
+            admin_token="admin-token-for-tests-0000000000000001",
             clock=lambda: self.now,
         )
 
@@ -77,6 +78,33 @@ class ActivationServiceTest(unittest.TestCase):
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers["Cache-Control"], "no-store")
             self.assertEqual(json.load(response), {"status": "ok"})
+
+    def test_admin_endpoint_requires_bearer_and_issues_short_lived_link(self) -> None:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler(self.service))
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        body = json.dumps({"device_id": "owner-iphone", "ttl_seconds": 900}).encode()
+        url = f"http://127.0.0.1:{server.server_port}/v1/admin/grants"
+
+        unauthorized = urllib.request.Request(url, data=body, method="POST")
+        with self.assertRaises(urllib.error.HTTPError) as raised:
+            urllib.request.urlopen(unauthorized)
+        self.assertEqual(raised.exception.code, 401)
+
+        authorized = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={"Authorization": "Bearer admin-token-for-tests-0000000000000001"},
+        )
+        with urllib.request.urlopen(authorized) as response:
+            payload = json.load(response)
+        self.assertEqual(response.status, 201)
+        self.assertEqual(payload["schema_version"], 1)
+        self.assertEqual(payload["expires_in"], 900)
+        self.assertRegex(payload["activation_url"], r"^olc://activate/[A-Za-z0-9_-]{43}$")
 
 
 if __name__ == "__main__":

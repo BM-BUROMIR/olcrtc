@@ -15,6 +15,8 @@ class SystemdUnitTest(unittest.TestCase):
         self.assertIn("StateDirectory=olc-control-plane", service)
         self.assertIn("UMask=0077", service)
         self.assertIn("EnvironmentFile=/etc/olc-control-plane/activation.env", service)
+        self.assertIn("LoadCredential=activation-admin-token:", service)
+        self.assertIn("--admin-token-file ${CREDENTIALS_DIRECTORY}/activation-admin-token", service)
         self.assertIn("--grants-db /var/lib/olc-control-plane/activation.db", service)
         self.assertIn("--device-registry /var/lib/olc-control-plane/devices.json", service)
         self.assertIn("--bind 127.0.0.1", service)
