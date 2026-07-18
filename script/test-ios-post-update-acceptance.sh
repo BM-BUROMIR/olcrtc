@@ -1,7 +1,8 @@
 #!/bin/sh
 set -eu
 
-repo_root=$(git rev-parse --show-toplevel)
+script_dir=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+repo_root=$(dirname "$script_dir")
 fixture_root=${OLC_TEST_TMPDIR:-$repo_root/build/local-check/tmp}
 mkdir -p "$fixture_root"
 fixture=$(mktemp -d "$fixture_root/olc-ios-post-update-test.XXXXXX")
