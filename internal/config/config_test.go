@@ -38,6 +38,7 @@ socks:
   port: 1080
   user: u
   pass: p
+  max_sessions: 17
   block_ports: [993, 5223]
   block_hosts: ["*.apple.com"]
   block_cidrs: ["17.0.0.0/8"]
@@ -101,6 +102,7 @@ func requireAppliedConfig(t *testing.T, got session.Config) {
 		SOCKSPort:             1080,
 		SOCKSUser:             "u",
 		SOCKSPass:             "p",
+		SOCKSMaxSessions:      17,
 		SOCKSBlockPorts:       []int{993, 5223},
 		SOCKSBlockHosts:       []string{"*.apple.com"},
 		SOCKSBlockCIDRs:       []string{"17.0.0.0/8"},
@@ -180,6 +182,7 @@ profiles:
     vp8:
       fps: 30
     socks:
+      max_sessions: 12
       block_ports: [5223]
       block_cidrs: ["17.0.0.0/8"]
     liveness:
@@ -222,6 +225,7 @@ failover:
 		t.Fatalf("first profile = %+v", first)
 	}
 	if first.KeyHex != "shared-key" || first.DNSServer != testDNSServer || first.VP8.FPS != 30 ||
+		first.SOCKSMaxSessions != 12 ||
 		first.LivenessInterval != "1s" || first.LivenessTimeout != "2s" || first.LivenessFailures != 5 ||
 		first.MaxSessionDuration != "30m" || first.TrafficMaxPayloadSize != 4096 ||
 		first.TrafficMinDelay != "10ms" || first.TrafficMaxDelay != "20ms" {

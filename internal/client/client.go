@@ -51,6 +51,11 @@ var (
 	ErrSOCKSCredTooLong = errors.New("socks5 user/pass exceeds 255 bytes")
 )
 
+const (
+	defaultMaxSOCKSSessions          = 64
+	defaultMaxSOCKSSessionsPerTarget = 8
+)
+
 // Client handles local SOCKS5 connections and tunnels them to the server.
 type Client struct {
 	ln     transport.Transport
@@ -77,15 +82,21 @@ type Client struct {
 	// independent timescale than the relaxed OnMissedPong/OnUnhealthy
 	// thresholds (which trade latency for KCP-batching tolerance, see
 	// runtime.LivenessTimeout).
-	controlLastPong atomic.Value // time.Time
-	deviceID        string
-	sessionID       string
-	claims          map[string]any
-	dnsServer       string
-	socksUser       string
-	socksPass       string
-	socksPolicy     socksBlockPolicy
-	blockedSOCKS    atomic.Uint64
+	controlLastPong     atomic.Value // time.Time
+	deviceID            string
+	sessionID           string
+	claims              map[string]any
+	dnsServer           string
+	socksUser           string
+	socksPass           string
+	socksPolicy         socksBlockPolicy
+	blockedSOCKS        atomic.Uint64
+	socksSlots          chan struct{}
+	socksLimit          int64
+	socksActive         atomic.Int64
+	socksTargetMu       sync.Mutex
+	socksTargets        map[string]int64
+	socksPerTargetLimit int64
 	// sessionReady is closed (and replaced) each time a session becomes fully
 	// established (sessionID != ""). Tunnel handlers wait on it so they do
 	// not open smux streams before the server has accepted the handshake.
@@ -106,6 +117,7 @@ type Config struct {
 	DNSServer        string
 	SOCKSUser        string
 	SOCKSPass        string
+	MaxSOCKSSessions int
 	SOCKSBlockPolicy SOCKSBlockPolicy
 	TransportOptions transport.Options
 	Engine           string
@@ -137,6 +149,13 @@ func Run(ctx context.Context, cfg Config) error {
 	return RunWithReady(ctx, cfg, nil)
 }
 
+func maxSOCKSSessions(configured int) int {
+	if configured > 0 {
+		return configured
+	}
+	return defaultMaxSOCKSSessions
+}
+
 // RunWithReady is like Run but invokes onReady once the local SOCKS listener is up.
 func RunWithReady(ctx context.Context, cfg Config, onReady func()) error {
 	runCtx, cancel := context.WithCancel(ctx)
@@ -156,17 +175,22 @@ func RunWithReady(ctx context.Context, cfg Config, onReady func()) error {
 	if err != nil {
 		return fmt.Errorf("configure SOCKS block policy: %w", err)
 	}
+	socksLimit := maxSOCKSSessions(cfg.MaxSOCKSSessions)
 
 	c := &Client{
-		cipher:       cipher,
-		deviceID:     deviceID,
-		claims:       cfg.Claims,
-		dnsServer:    cfg.DNSServer,
-		socksUser:    cfg.SOCKSUser,
-		socksPass:    cfg.SOCKSPass,
-		socksPolicy:  socksPolicy,
-		health:       runtime.NewHealthTracker(cfg.OnHealth),
-		sessionReady: make(chan struct{}),
+		cipher:              cipher,
+		deviceID:            deviceID,
+		claims:              cfg.Claims,
+		dnsServer:           cfg.DNSServer,
+		socksUser:           cfg.SOCKSUser,
+		socksPass:           cfg.SOCKSPass,
+		socksPolicy:         socksPolicy,
+		socksSlots:          make(chan struct{}, socksLimit),
+		socksLimit:          int64(socksLimit),
+		socksTargets:        make(map[string]int64),
+		socksPerTargetLimit: defaultMaxSOCKSSessionsPerTarget,
+		health:              runtime.NewHealthTracker(cfg.OnHealth),
+		sessionReady:        make(chan struct{}),
 	}
 
 	// shutdown is registered BEFORE bringUpLink so we always close any
@@ -886,6 +910,13 @@ func (c *Client) handleSocks5(ctx context.Context, conn net.Conn) {
 		return
 	}
 
+	target := socksTargetKey(targetAddr, targetPort)
+	if !c.acquireSOCKSSlot(ctx, conn, target) {
+		_, _ = conn.Write(replyHostUnreachable())
+		return
+	}
+	defer c.releaseSOCKSSlot(target)
+
 	// Wait until the session handshake is fully complete (sessionID != "").
 	// Without this gate, tunnel streams opened during server-side reinstall
 	// land on a dying smux session and get "closed pipe".
@@ -915,6 +946,94 @@ func (c *Client) handleSocks5(ctx context.Context, conn net.Conn) {
 	}
 }
 
+func socksTargetKey(addr string, port int) string {
+	return strings.ToLower(net.JoinHostPort(addr, strconv.Itoa(port)))
+}
+
+func (c *Client) acquireSOCKSSlot(ctx context.Context, conn net.Conn, target string) bool {
+	const (
+		retryInterval = 100 * time.Millisecond
+		logInterval   = 5 * time.Second
+	)
+	nextLog := time.Now().Add(logInterval)
+	for {
+		active, targetActive, blockedBy, ok := c.tryAcquireSOCKSSlot(target)
+		if ok {
+			return true
+		}
+		switch blockedBy {
+		case "target":
+			logger.Warnf(
+				"SOCKS target limit reached target=%s active=%d target_active=%d target_limit=%d",
+				target,
+				active,
+				targetActive,
+				c.socksPerTargetLimit,
+			)
+			return false
+		case "global":
+			if time.Now().After(nextLog) {
+				logger.Warnf(
+					"SOCKS session limit reached active=%d limit=%d target=%s",
+					active,
+					c.socksLimit,
+					target,
+				)
+				nextLog = time.Now().Add(logInterval)
+			}
+		default:
+			return false
+		}
+		timer := time.NewTimer(retryInterval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			_ = conn.Close()
+			return false
+		case <-timer.C:
+		}
+	}
+}
+
+func (c *Client) tryAcquireSOCKSSlot(target string) (active, targetActive int64, blockedBy string, ok bool) {
+	c.socksTargetMu.Lock()
+	defer c.socksTargetMu.Unlock()
+
+	targetActive = c.socksTargets[target]
+	if c.socksPerTargetLimit > 0 && targetActive >= c.socksPerTargetLimit {
+		return c.socksActive.Load(), targetActive, "target", false
+	}
+
+	select {
+	case c.socksSlots <- struct{}{}:
+		c.socksTargets[target] = targetActive + 1
+		active = c.socksActive.Add(1)
+		return active, targetActive + 1, "", true
+	default:
+		return c.socksActive.Load(), targetActive, "global", false
+	}
+}
+
+func (c *Client) releaseSOCKSSlot(target string) {
+	select {
+	case <-c.socksSlots:
+	default:
+		return
+	}
+	active := c.socksActive.Add(-1)
+	if active < 0 {
+		c.socksActive.Store(0)
+	}
+
+	c.socksTargetMu.Lock()
+	defer c.socksTargetMu.Unlock()
+	if current := c.socksTargets[target]; current <= 1 {
+		delete(c.socksTargets, target)
+	} else {
+		c.socksTargets[target] = current - 1
+	}
+}
+
 func (c *Client) tunnel(conn net.Conn, sess *smux.Session, targetAddr string, targetPort int) {
 	stream, err := sess.OpenStream()
 	if err != nil {
@@ -924,7 +1043,14 @@ func (c *Client) tunnel(conn net.Conn, sess *smux.Session, targetAddr string, ta
 	}
 	defer func() { _ = stream.Close() }()
 
-	logger.Infof("sid=%d tunnel to %s:%d", stream.ID(), targetAddr, targetPort)
+	logger.Infof(
+		"sid=%d tunnel to %s:%d socks_active=%d socks_limit=%d",
+		stream.ID(),
+		targetAddr,
+		targetPort,
+		c.socksActive.Load(),
+		c.socksLimit,
+	)
 
 	if err := c.sendConnectRequest(stream, targetAddr, targetPort); err != nil {
 		logger.Warnf("sid=%d connect failed: %v", stream.ID(), err)
