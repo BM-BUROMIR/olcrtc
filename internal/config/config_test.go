@@ -360,3 +360,43 @@ func TestLoadInvalidUTF8(t *testing.T) {
 		t.Fatalf("Load() error = %v, want invalid UTF-8 error", err)
 	}
 }
+
+// device_id must survive the YAML -> session.Config hop. Without it the client
+// falls back to a fresh random identity per run, which is what breaks
+// reconnection recognition and per-device accounting.
+func TestApplyCarriesDeviceIdentity(t *testing.T) {
+	f := File{}
+	f.DeviceID = "owner-iphone"
+	f.DeviceIDPath = "/var/lib/olc/device-id"
+
+	got := Apply(session.Config{}, f)
+
+	if got.DeviceID != "owner-iphone" {
+		t.Fatalf("DeviceID = %q, want %q", got.DeviceID, "owner-iphone")
+	}
+	if got.DeviceIDPath != "/var/lib/olc/device-id" {
+		t.Fatalf("DeviceIDPath = %q, want %q", got.DeviceIDPath, "/var/lib/olc/device-id")
+	}
+}
+
+// An explicit value already present in the destination wins over the file, the
+// same precedence every other field in Apply uses.
+func TestApplyDeviceIdentityDoesNotOverrideExplicit(t *testing.T) {
+	f := File{}
+	f.DeviceID = "from-file"
+
+	got := Apply(session.Config{DeviceID: "explicit"}, f)
+
+	if got.DeviceID != "explicit" {
+		t.Fatalf("DeviceID = %q, want explicit to win", got.DeviceID)
+	}
+}
+
+// Absent device identity stays empty so the existing random-per-run behaviour is
+// unchanged for configs that do not opt in.
+func TestApplyWithoutDeviceIdentityLeavesEmpty(t *testing.T) {
+	got := Apply(session.Config{}, File{})
+	if got.DeviceID != "" || got.DeviceIDPath != "" {
+		t.Fatalf("expected empty identity, got %q / %q", got.DeviceID, got.DeviceIDPath)
+	}
+}

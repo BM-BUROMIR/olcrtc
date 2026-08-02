@@ -51,6 +51,15 @@ type File struct {
 	Failover  Failover  `yaml:"failover"`
 	Data      string    `yaml:"data"`
 	Debug     bool      `yaml:"debug"`
+
+	// DeviceID pins the identity announced in CLIENT_HELLO. Without it (and
+	// without DeviceIDPath) every run registers as a brand-new device, so the
+	// server cannot recognise a reconnecting client, per-device accounting
+	// drifts, and session relatching never engages.
+	DeviceID string `yaml:"device_id"`
+	// DeviceIDPath persists a generated device identity across runs. Ignored
+	// when DeviceID is set explicitly.
+	DeviceIDPath string `yaml:"device_id_path"`
 }
 
 // Profile is a failover entry that overrides top-level runtime fields.
@@ -261,6 +270,8 @@ func Apply(dst session.Config, f File) session.Config {
 	dst.Token = pickString(dst.Token, f.Engine.Token)
 	dst.RoomID = pickString(dst.RoomID, f.Room.ID)
 	dst.ChannelID = pickString(dst.ChannelID, f.Room.Channel)
+	dst.DeviceID = pickString(dst.DeviceID, f.DeviceID)
+	dst.DeviceIDPath = pickString(dst.DeviceIDPath, f.DeviceIDPath)
 	dst.KeyHex = pickString(dst.KeyHex, f.Crypto.Key)
 	dst.SOCKSHost = pickString(dst.SOCKSHost, f.SOCKS.Host)
 	dst.SOCKSPort = pickInt(dst.SOCKSPort, f.SOCKS.Port)
