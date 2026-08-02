@@ -733,3 +733,79 @@ func TestSeqLessWrapAround(t *testing.T) {
 		}
 	}
 }
+
+// A deployment straddling the switch to per-channel binding must keep working:
+// receivers honour both tokens, so either side can be upgraded first.
+func TestBindingTokenCompatAcrossVersions(t *testing.T) {
+	cfg := transport.Config{
+		RoomURL:   "https://example.invalid/room/abc",
+		ChannelID: "chan-xyz",
+	}
+
+	legacy := legacyBindingToken(cfg)
+	perChannel := channelBindingToken(cfg)
+	if legacy == perChannel {
+		t.Fatal("test config does not actually distinguish the two schemes")
+	}
+
+	accepted := acceptedBindingTokens(cfg)
+	if len(accepted) != 2 {
+		t.Fatalf("acceptedBindingTokens() = %v, want both schemes", accepted)
+	}
+	var sawLegacy, sawPerChannel bool
+	for _, tok := range accepted {
+		switch tok {
+		case legacy:
+			sawLegacy = true
+		case perChannel:
+			sawPerChannel = true
+		}
+	}
+	if !sawLegacy || !sawPerChannel {
+		t.Fatalf("acceptedBindingTokens() = %v, want to contain 0x%08x and 0x%08x",
+			accepted, legacy, perChannel)
+	}
+}
+
+// Default sending stays on the legacy token: an un-upgraded peer accepts
+// nothing else, and an upgraded peer accepts both.
+func TestSendBindingTokenDefaultsToLegacy(t *testing.T) {
+	cfg := transport.Config{
+		RoomURL:   "https://example.invalid/room/abc",
+		ChannelID: "chan-xyz",
+	}
+	if got, want := sendBindingToken(cfg), legacyBindingToken(cfg); got != want {
+		t.Fatalf("sendBindingToken() = 0x%08x, want legacy 0x%08x", got, want)
+	}
+	cfg.PerChannelBinding = true
+	if got, want := sendBindingToken(cfg), channelBindingToken(cfg); got != want {
+		t.Fatalf("sendBindingToken(PerChannelBinding) = 0x%08x, want 0x%08x", got, want)
+	}
+}
+
+// Without a ChannelID both schemes coincide, so nothing is duplicated.
+func TestAcceptedBindingTokensDedupesWhenSchemesAgree(t *testing.T) {
+	cfg := transport.Config{RoomURL: "https://example.invalid/room/abc"}
+	if got := acceptedBindingTokens(cfg); len(got) != 1 {
+		t.Fatalf("acceptedBindingTokens() = %v, want a single token", got)
+	}
+}
+
+// A token belonging to neither scheme is still rejected: compatibility must not
+// turn into "accept anything".
+func TestAcceptsBindingTokenRejectsForeignToken(t *testing.T) {
+	cfg := transport.Config{
+		RoomURL:   "https://example.invalid/room/abc",
+		ChannelID: "chan-xyz",
+	}
+	p := &streamTransport{acceptedTokens: acceptedBindingTokens(cfg)}
+	if !p.acceptsBindingToken(legacyBindingToken(cfg)) {
+		t.Fatal("legacy token rejected")
+	}
+	if !p.acceptsBindingToken(channelBindingToken(cfg)) {
+		t.Fatal("per-channel token rejected")
+	}
+	if p.acceptsBindingToken(bindingToken("some-other-room")) {
+		t.Fatal("foreign token accepted")
+	}
+}
