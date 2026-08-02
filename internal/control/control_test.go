@@ -104,6 +104,149 @@ func TestRunMarksUnhealthyAfterMissedPongs(t *testing.T) {
 	}
 }
 
+func TestLatePongResetsFailuresAndReportsPong(t *testing.T) {
+	base := time.Unix(10, 0)
+	now := base
+	got := make(chan Health, 1)
+	s := &state{
+		cfg: Config{
+			Timeout:  10 * time.Millisecond,
+			Failures: 4,
+			OnPong: func(h Health) {
+				got <- h
+			},
+		},
+		pending: make(map[uint64]time.Time),
+		now:     func() time.Time { return now },
+		out:     make(chan Message, 4),
+	}
+
+	if err := s.sendProbe(context.Background()); err != nil {
+		t.Fatalf("sendProbe() error = %v", err)
+	}
+	now = base.Add(11 * time.Millisecond)
+	if err := s.sendProbe(context.Background()); err != nil {
+		t.Fatalf("sendProbe(timeout) error = %v", err)
+	}
+	if s.failures != 1 {
+		t.Fatalf("failures after timeout = %d, want 1", s.failures)
+	}
+
+	s.handlePong(Message{Version: ProtoVersion, Type: TypePong, Seq: 1})
+
+	if s.failures != 0 {
+		t.Fatalf("failures after late pong = %d, want 0", s.failures)
+	}
+	select {
+	case h := <-got:
+		if h.Seq != 1 {
+			t.Fatalf("Health.Seq = %d, want 1", h.Seq)
+		}
+		if h.RTT != 11*time.Millisecond {
+			t.Fatalf("Health.RTT = %v, want 11ms", h.RTT)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("OnPong was not called for late pong")
+	}
+}
+
+func TestUnknownPongDoesNotResetFailures(t *testing.T) {
+	called := false
+	s := &state{
+		cfg: Config{
+			OnPong: func(Health) {
+				called = true
+			},
+		},
+		pending:  make(map[uint64]time.Time),
+		now:      time.Now,
+		failures: 2,
+	}
+
+	s.handlePong(Message{Version: ProtoVersion, Type: TypePong, Seq: 99})
+
+	if s.failures != 2 {
+		t.Fatalf("failures = %d, want 2", s.failures)
+	}
+	if called {
+		t.Fatal("OnPong called for unknown seq")
+	}
+}
+
+func TestLatePongIsConsumedOnce(t *testing.T) {
+	base := time.Unix(20, 0)
+	now := base
+	calls := 0
+	s := &state{
+		cfg: Config{
+			Timeout:  10 * time.Millisecond,
+			Failures: 4,
+			OnPong: func(Health) {
+				calls++
+			},
+		},
+		pending: make(map[uint64]time.Time),
+		now:     func() time.Time { return now },
+		out:     make(chan Message, 4),
+	}
+
+	if err := s.sendProbe(context.Background()); err != nil {
+		t.Fatalf("sendProbe() error = %v", err)
+	}
+	now = base.Add(11 * time.Millisecond)
+	if err := s.sendProbe(context.Background()); err != nil {
+		t.Fatalf("sendProbe(timeout) error = %v", err)
+	}
+	s.handlePong(Message{Version: ProtoVersion, Type: TypePong, Seq: 1})
+	s.failures = 2
+	s.handlePong(Message{Version: ProtoVersion, Type: TypePong, Seq: 1})
+
+	if calls != 1 {
+		t.Fatalf("OnPong calls = %d, want 1", calls)
+	}
+	if s.failures != 2 {
+		t.Fatalf("failures after duplicate late pong = %d, want 2", s.failures)
+	}
+}
+
+func TestExpiredPongWindowIsBounded(t *testing.T) {
+	base := time.Unix(30, 0)
+	now := base
+	calls := 0
+	s := &state{
+		cfg: Config{
+			Timeout:  time.Millisecond,
+			Interval: time.Millisecond,
+			Failures: expiredPongSeqLimit + 10,
+			OnPong: func(Health) {
+				calls++
+			},
+		},
+		pending: make(map[uint64]time.Time),
+		now:     func() time.Time { return now },
+		out:     make(chan Message, expiredPongSeqLimit+4),
+	}
+
+	for range expiredPongSeqLimit + 2 {
+		if err := s.sendProbe(context.Background()); err != nil {
+			t.Fatalf("sendProbe() error = %v", err)
+		}
+		now = now.Add(2 * time.Millisecond)
+	}
+	s.failures = 3
+	s.handlePong(Message{Version: ProtoVersion, Type: TypePong, Seq: 1})
+
+	if calls != 0 {
+		t.Fatalf("OnPong calls = %d, want 0 for pruned expired seq", calls)
+	}
+	if s.failures != 3 {
+		t.Fatalf("failures = %d, want 3 for pruned expired seq", s.failures)
+	}
+	if len(s.expiredPongs) > expiredPongSeqLimit {
+		t.Fatalf("expired pong window size = %d, want <= %d", len(s.expiredPongs), expiredPongSeqLimit)
+	}
+}
+
 func TestRunRejectsBadProtocolVersion(t *testing.T) {
 	a, b := controlPair(t)
 	errCh := make(chan error, 1)
