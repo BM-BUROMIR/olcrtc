@@ -809,3 +809,60 @@ func TestAcceptsBindingTokenRejectsForeignToken(t *testing.T) {
 		t.Fatal("foreign token accepted")
 	}
 }
+
+// A client that latched onto another participant's data epoch must re-point at
+// the server as soon as the server addresses its control epoch. Without this the
+// data plane stays bound to a peer that never answers while the control plane
+// keeps reporting health, so nothing ever detects the dead tunnel.
+func TestAlignDataLatchWithControlPeerRepointsToServer(t *testing.T) {
+	p := &streamTransport{}
+	p.localEpoch = 0x00000111
+	const foreignClientData = 0x0b2f83f7
+	const serverData = 0x3293b8d8
+
+	p.handleFirstPeer(foreignClientData)
+	if got := p.peerEpoch.Load(); got != foreignClientData {
+		t.Fatalf("setup: peerEpoch = 0x%08x, want 0x%08x", got, foreignClientData)
+	}
+
+	p.alignDataLatchWithControlPeer(serverData | controlEpochFlag)
+
+	if got := p.peerEpoch.Load(); got != serverData {
+		t.Fatalf("peerEpoch = 0x%08x, want server 0x%08x", got, serverData)
+	}
+}
+
+// When the latch is already the control peer, nothing changes and no rebuild is
+// provoked.
+func TestAlignDataLatchWithControlPeerIsNoOpWhenCorrect(t *testing.T) {
+	p := &streamTransport{}
+	p.localEpoch = 0x00000111
+	const serverData = 0x3293b8d8
+
+	p.handleFirstPeer(serverData)
+	before := p.lastPeerFrameNano.Load()
+
+	p.alignDataLatchWithControlPeer(serverData | controlEpochFlag)
+
+	if got := p.peerEpoch.Load(); got != serverData {
+		t.Fatalf("peerEpoch = 0x%08x, want 0x%08x", got, serverData)
+	}
+	if p.lastPeerFrameNano.Load() != before {
+		t.Fatal("latch was re-armed even though it already pointed at the control peer")
+	}
+}
+
+// A control epoch that masks down to zero is not a usable data epoch and must be
+// ignored rather than clearing a good latch.
+func TestAlignDataLatchWithControlPeerIgnoresZero(t *testing.T) {
+	p := &streamTransport{}
+	p.localEpoch = 0x00000111
+	const serverData = 0x3293b8d8
+
+	p.handleFirstPeer(serverData)
+	p.alignDataLatchWithControlPeer(controlEpochFlag)
+
+	if got := p.peerEpoch.Load(); got != serverData {
+		t.Fatalf("peerEpoch = 0x%08x, want unchanged 0x%08x", got, serverData)
+	}
+}

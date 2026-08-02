@@ -1261,6 +1261,37 @@ func (p *streamTransport) handleFirstPeer(peerEpoch uint32) {
 	logger.Infof("vp8channel: peer latched epoch=0x%08x", peerEpoch)
 }
 
+// alignDataLatchWithControlPeer points the data latch at the peer that owns the
+// control stream, given the source control epoch of a frame addressed to us.
+//
+// Only the server addresses our control epoch directly — other participants
+// broadcast with dst==0 — so a targeted control frame identifies the server
+// beyond doubt, and its data epoch is the same value without the control flag.
+//
+// The data latch, by contrast, is taken from the first foreign data epoch seen.
+// In a room that already holds another client, that can easily be the other
+// client's broadcast. The result is a session that looks entirely healthy —
+// handshake completes and liveness keeps passing, because both ride the control
+// plane — while the data plane is bound to a peer that will never answer. No
+// traffic flows, nothing is logged, and the peer-restart watchdog stays inert
+// precisely because the control plane is fine. Observed as a permanently dead
+// tunnel that reports itself connected.
+//
+// Re-pointing the latch here closes that gap using a signal the client already
+// receives and already trusts.
+func (p *streamTransport) alignDataLatchWithControlPeer(srcControlEpoch uint32) {
+	serverData := srcControlEpoch &^ controlEpochFlag
+	if serverData == 0 {
+		return
+	}
+	if p.peerEpoch.Load() == serverData {
+		return
+	}
+	logger.Warnf("vp8channel: data latch 0x%08x is not the control peer 0x%08x "+
+		"- relatching to the server", p.peerEpoch.Load(), serverData)
+	p.handleFirstPeer(serverData)
+}
+
 // acceptsDst reports whether a frame addressed to dst is for us. dst==0 is a
 // broadcast (accepted by everyone, used before the sender has learned our
 // epoch). Otherwise the frame must target either our data epoch or our
@@ -1428,6 +1459,7 @@ func (p *streamTransport) handleControlFrame(src, dst uint32, kcpPayload []byte)
 	if dst != p.controlEpochValue() {
 		return
 	}
+	p.alignDataLatchWithControlPeer(src)
 	// Single-peer mode: deliver to the singleton control KCP.
 	p.controlKCPMu.RLock()
 	crt := p.controlKCP
