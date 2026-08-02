@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -124,6 +125,11 @@ type peerSession struct {
 	deviceID    string
 	// sessionReady is closed once sessionID is populated from acceptHandshake.
 	sessionReady chan struct{}
+	// missedPongs is the current consecutive missed-pong count reported by this
+	// peer's liveness loop: 0 while the control stream is answering. Relatching
+	// reads it to tell a peer that has actually lost its carrier from one that
+	// is still healthy, so a live session cannot be taken over.
+	missedPongs atomic.Int32
 }
 
 // ConnectRequest is a message from the client to establish a new connection.
@@ -1060,7 +1066,7 @@ func (s *Server) acceptPeerHandshake(ctx context.Context, ps *peerSession) {
 			s.removePeerSession(ps.peerID, "handshake failed")
 			return
 		}
-		relatched := s.reLatchPeerSession(ps, hello.DeviceID)
+		relatched := s.reLatchPeerSession(ps, hello.DeviceID, hello.Claims)
 		// Populate the peerSession and signal readiness so waitPeerHandshake unblocks.
 		s.sessMu.Lock()
 		if !relatched {
@@ -1082,16 +1088,39 @@ func (s *Server) acceptPeerHandshake(ctx context.Context, ps *peerSession) {
 	}
 }
 
-func (s *Server) reLatchPeerSession(ps *peerSession, deviceID string) bool {
+// PrevSessionClaim is the CLIENT_HELLO claim through which a reconnecting
+// client proves it is continuing its own session: it echoes the session ID the
+// server assigned it earlier. Only the peer that already owns the session knows
+// that value, so presenting it is a capability, unlike DeviceID which any peer
+// able to complete the handshake can assert.
+const PrevSessionClaim = "prev_session"
+
+// reLatchPeerSession moves an existing session for the same device onto the new
+// peerID after a carrier epoch change.
+//
+// Takeover is deliberately restricted. A session whose control stream is still
+// answering pings can only be relatched by a claimant that echoes its session ID
+// via PrevSessionClaim. A session that has already started missing pongs — the
+// real epoch-change case, where the old carrier is gone — may be relatched on
+// DeviceID alone, because it is failing anyway and clients predating the claim
+// still need to recover. Without this split, any peer that can complete the
+// handshake could disconnect another device just by asserting its DeviceID,
+// which becomes trivial once device IDs are stable and human-meaningful.
+func (s *Server) reLatchPeerSession(ps *peerSession, deviceID string, claims map[string]any) bool {
 	if deviceID == "" {
 		return false
 	}
+	prevSession, _ := claims[PrevSessionClaim].(string)
 
 	s.sessMu.Lock()
 	var oldPeerID string
 	var old *peerSession
 	for peerID, candidate := range s.peerSessions {
 		if candidate == ps || candidate.deviceID != deviceID || candidate.sessionID == "" {
+			continue
+		}
+		if candidate.missedPongs.Load() == 0 && (prevSession == "" || prevSession != candidate.sessionID) {
+			// Healthy session, and the claimant cannot prove it owns it.
 			continue
 		}
 		oldPeerID = peerID
@@ -1153,6 +1182,7 @@ func (s *Server) startPeerControlLoop(ctx context.Context, ps *peerSession, stre
 	onMissedPong := liveness.OnMissedPong
 	onUnhealthy := liveness.OnUnhealthy
 	liveness.OnPong = func(h control.Health) {
+		ps.missedPongs.Store(0)
 		s.recordPong(h)
 		logger.Debugf("control alive peer=%s rtt=%v seq=%d", ps.peerID, h.RTT, h.Seq)
 		if onPong != nil {
@@ -1160,6 +1190,7 @@ func (s *Server) startPeerControlLoop(ctx context.Context, ps *peerSession, stre
 		}
 	}
 	liveness.OnMissedPong = func(missed int) {
+		ps.missedPongs.Store(int32(missed))
 		s.recordMissed(missed)
 		logger.Warnf("control missed pong peer=%s missed=%d", ps.peerID, missed)
 		if onMissedPong != nil {

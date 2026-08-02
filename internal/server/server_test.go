@@ -934,6 +934,9 @@ func TestAcceptPeerHandshakeRelatchesSameDeviceToNewPeerID(t *testing.T) {
 		sessionID: "sid-old",
 		deviceID:  "dev-1",
 	}
+	// The carrier epoch changed, so the old control stream has already stopped
+	// answering. This is the case relatching exists for.
+	old.missedPongs.Store(1)
 	ps, clientSess, cleanup := newPeerControlSession(t, "00000002")
 	defer cleanup()
 	defer func() {
@@ -1116,6 +1119,18 @@ func runPeerHandshake(
 	deviceID string,
 ) *smux.Stream {
 	t.Helper()
+	return runPeerHandshakeWithClaims(t, s, ps, clientSess, deviceID, nil)
+}
+
+func runPeerHandshakeWithClaims(
+	t *testing.T,
+	s *Server,
+	ps *peerSession,
+	clientSess *smux.Session,
+	deviceID string,
+	claims map[string]any,
+) *smux.Stream {
+	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
 	done := make(chan struct{})
@@ -1129,7 +1144,7 @@ func runPeerHandshake(
 		t.Fatalf("OpenStream() error = %v", err)
 	}
 	t.Cleanup(func() { _ = stream.Close() })
-	if _, err := handshake.Client(stream, deviceID, nil); err != nil {
+	if _, err := handshake.Client(stream, deviceID, claims); err != nil {
 		t.Fatalf("handshake.Client() error = %v", err)
 	}
 
@@ -1139,4 +1154,106 @@ func runPeerHandshake(
 		t.Fatal("acceptPeerHandshake did not return")
 	}
 	return stream
+}
+
+// A session whose control stream is still answering must not be taken over by a
+// peer that merely asserts the same DeviceID. DeviceID is not a secret: any peer
+// able to complete the handshake can claim one, so allowing that would let a
+// fleet member disconnect another device at will.
+func TestAcceptPeerHandshakeDoesNotRelatchHealthySessionOnDeviceIDAlone(t *testing.T) {
+	s := newPeerRelatchServer()
+	old := &peerSession{
+		peerID:    "00000001",
+		sessionID: "sid-old",
+		deviceID:  "dev-1",
+	}
+	// missedPongs stays 0: the old peer is healthy.
+	ps, clientSess, cleanup := newPeerControlSession(t, "00000002")
+	defer cleanup()
+	defer func() {
+		s.shutdown()
+		s.wg.Wait()
+	}()
+	s.peerSessions[old.peerID] = old
+	s.peerSessions[ps.peerID] = ps
+	s.peerStats[old.sessionID] = peerStat{deviceID: old.deviceID, openedAt: time.Now()}
+
+	runPeerHandshake(t, s, ps, clientSess, "dev-1")
+
+	s.sessMu.RLock()
+	gotOld := s.peerSessions[old.peerID]
+	gotNew := s.peerSessions[ps.peerID]
+	s.sessMu.RUnlock()
+	if gotOld == nil {
+		t.Fatal("healthy session was taken over on DeviceID alone")
+	}
+	if gotNew == nil {
+		t.Fatal("claimant did not get its own session")
+	}
+	if gotNew.sessionID == old.sessionID {
+		t.Fatalf("claimant inherited the healthy session ID %q", old.sessionID)
+	}
+}
+
+// The legitimate owner reconnecting to a still-healthy session proves continuity
+// by echoing the session ID the server gave it, and is relatched.
+func TestAcceptPeerHandshakeRelatchesHealthySessionWithPrevSessionClaim(t *testing.T) {
+	s := newPeerRelatchServer()
+	old := &peerSession{
+		peerID:    "00000001",
+		sessionID: "sid-old",
+		deviceID:  "dev-1",
+	}
+	ps, clientSess, cleanup := newPeerControlSession(t, "00000002")
+	defer cleanup()
+	defer func() {
+		s.shutdown()
+		s.wg.Wait()
+	}()
+	s.peerSessions[old.peerID] = old
+	s.peerSessions[ps.peerID] = ps
+	s.peerStats[old.sessionID] = peerStat{deviceID: old.deviceID, openedAt: time.Now()}
+
+	runPeerHandshakeWithClaims(t, s, ps, clientSess, "dev-1",
+		map[string]any{PrevSessionClaim: "sid-old"})
+
+	s.sessMu.RLock()
+	gotOld := s.peerSessions[old.peerID]
+	gotNew := s.peerSessions[ps.peerID]
+	s.sessMu.RUnlock()
+	if gotOld != nil {
+		t.Fatal("old peerID still has a peer session")
+	}
+	if gotNew == nil || gotNew.sessionID != "sid-old" {
+		t.Fatal("owner did not relatch its own session")
+	}
+}
+
+// A wrong session ID must not unlock takeover of a healthy session.
+func TestAcceptPeerHandshakeRejectsWrongPrevSessionClaim(t *testing.T) {
+	s := newPeerRelatchServer()
+	old := &peerSession{
+		peerID:    "00000001",
+		sessionID: "sid-old",
+		deviceID:  "dev-1",
+	}
+	ps, clientSess, cleanup := newPeerControlSession(t, "00000002")
+	defer cleanup()
+	defer func() {
+		s.shutdown()
+		s.wg.Wait()
+	}()
+	s.peerSessions[old.peerID] = old
+	s.peerSessions[ps.peerID] = ps
+	s.peerStats[old.sessionID] = peerStat{deviceID: old.deviceID, openedAt: time.Now()}
+
+	runPeerHandshakeWithClaims(t, s, ps, clientSess, "dev-1",
+		map[string]any{PrevSessionClaim: "sid-guessed"})
+
+	s.sessMu.RLock()
+	gotOld := s.peerSessions[old.peerID]
+	s.sessMu.RUnlock()
+	if gotOld == nil {
+		t.Fatal("healthy session was taken over with a wrong prev_session claim")
+	}
 }
