@@ -1060,20 +1060,79 @@ func (s *Server) acceptPeerHandshake(ctx context.Context, ps *peerSession) {
 			s.removePeerSession(ps.peerID, "handshake failed")
 			return
 		}
+		relatched := s.reLatchPeerSession(ps, hello.DeviceID)
 		// Populate the peerSession and signal readiness so waitPeerHandshake unblocks.
 		s.sessMu.Lock()
-		ps.deviceID = hello.DeviceID
-		ps.sessionID = sid
+		if !relatched {
+			ps.deviceID = hello.DeviceID
+			ps.sessionID = sid
+		}
 		s.sessMu.Unlock()
 		if ps.sessionReady != nil {
 			close(ps.sessionReady)
 		}
-		s.recordSession(sid)
-		s.onOpen(sid, hello.DeviceID, hello.Claims)
-		s.trackPeerOpen(sid, hello.DeviceID)
-		logger.Infof("peer session %s opened (peer=%s device=%s)", sid, ps.peerID, hello.DeviceID)
+		if !relatched {
+			s.recordSession(sid)
+			s.onOpen(sid, hello.DeviceID, hello.Claims)
+			s.trackPeerOpen(sid, hello.DeviceID)
+			logger.Infof("peer session %s opened (peer=%s device=%s)", sid, ps.peerID, hello.DeviceID)
+		}
 		s.startPeerControlLoop(ctx, ps, stream)
 		return
+	}
+}
+
+func (s *Server) reLatchPeerSession(ps *peerSession, deviceID string) bool {
+	if deviceID == "" {
+		return false
+	}
+
+	s.sessMu.Lock()
+	var oldPeerID string
+	var old *peerSession
+	for peerID, candidate := range s.peerSessions {
+		if candidate == ps || candidate.deviceID != deviceID || candidate.sessionID == "" {
+			continue
+		}
+		oldPeerID = peerID
+		old = candidate
+		break
+	}
+	if old == nil {
+		s.sessMu.Unlock()
+		return false
+	}
+	delete(s.peerSessions, oldPeerID)
+	s.peerSessions[ps.peerID] = ps
+	ps.deviceID = deviceID
+	ps.sessionID = old.sessionID
+	s.sessMu.Unlock()
+
+	s.closePeerTransport(old)
+	logger.Infof("peer session %s relatched oldPeer=%s newPeer=%s device=%s",
+		ps.sessionID, oldPeerID, ps.peerID, deviceID)
+	return true
+}
+
+func (s *Server) closePeerTransport(ps *peerSession) {
+	if ps.controlStop != nil {
+		ps.controlStop()
+	}
+	notifyControlClose(ps.controlStrm)
+	if ps.controlSess != nil {
+		_ = ps.controlSess.Close()
+	}
+	if ps.controlConn != nil {
+		_ = ps.controlConn.Close()
+	}
+	if ps.session != nil {
+		_ = ps.session.Close()
+	}
+	if ps.conn != nil {
+		_ = ps.conn.Close()
+	}
+	if ps.controlStrm != nil {
+		_ = ps.controlStrm.Close()
 	}
 }
 
