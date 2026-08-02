@@ -186,6 +186,12 @@ type Config struct {
 	Token                 string
 	RoomID                string
 	ChannelID             string
+	// DeviceID pins the identity announced in CLIENT_HELLO; DeviceIDPath
+	// persists a generated one across runs. With both empty the client
+	// registers as a new device on every start, which breaks reconnection
+	// recognition and per-device accounting.
+	DeviceID              string
+	DeviceIDPath          string
 	KeyHex                string
 	SOCKSHost             string
 	SOCKSPort             int
@@ -711,6 +717,8 @@ func runOnce(
 			Carrier:          cfg.Auth,
 			RoomURL:          roomURL,
 			ChannelID:        cfg.ChannelID,
+			DeviceID:         cfg.DeviceID,
+			DeviceIDPath:     cfg.DeviceIDPath,
 			KeyHex:           cfg.KeyHex,
 			LocalAddr:        fmt.Sprintf("%s:%d", cfg.SOCKSHost, cfg.SOCKSPort),
 			DNSServer:        cfg.DNSServer,
