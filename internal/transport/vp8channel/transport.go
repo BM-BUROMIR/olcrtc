@@ -14,6 +14,7 @@ import (
 	"hash/crc32"
 	"hash/fnv"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -160,7 +161,11 @@ type streamTransport struct {
 	// upper-layer resets rotate it so the peer can reset its KCP state too.
 	// Peer-triggered resets keep it stable to avoid reset ping-pong.
 	bindingToken uint32
-	epochMu      sync.RWMutex
+	// acceptedTokens are the binding tokens honoured on receive. It holds more
+	// than one while a deployment straddles the switch to per-channel binding.
+	acceptedTokens    []uint32
+	lastTokenWarnNano atomic.Int64
+	epochMu           sync.RWMutex
 	localEpoch   uint32
 	peerEpoch    atomic.Uint32
 
@@ -305,7 +310,8 @@ func newStreamTransport(
 		writerDone:       make(chan struct{}),
 		frameInterval:    time.Second / time.Duration(fps),
 		batchSize:        batchSize,
-		bindingToken:     channelBindingToken(cfg),
+		bindingToken:     sendBindingToken(cfg),
+		acceptedTokens:   acceptedBindingTokens(cfg),
 		localEpoch:       randomEpoch(),
 		peers:            make(map[uint32]*kcpRuntime),
 		peerOut:          make(map[uint32]chan []byte),
@@ -495,6 +501,95 @@ func channelBindingToken(cfg transport.Config) uint32 {
 		return bindingToken(cfg.ChannelID)
 	}
 	return bindingToken(cfg.RoomURL)
+}
+
+// legacyBindingToken is the room-derived token used before per-channel binding
+// was introduced. Peers that predate that change tag every frame with it and
+// accept nothing else, so a mixed fleet only interoperates while both tokens
+// are honoured on receive.
+func legacyBindingToken(cfg transport.Config) uint32 {
+	return bindingToken(cfg.RoomURL)
+}
+
+// acceptedBindingTokens lists every token this peer will accept on an incoming
+// frame: its own, plus the legacy room-derived one while they differ.
+//
+// Sending is a separate decision (see sendBindingToken): a peer may accept both
+// yet still have to emit the legacy token, because an un-upgraded remote end
+// drops everything else. Accepting both is what makes a staged rollout
+// possible at all — without it, updating either side alone silently blackholes
+// every frame, since a token mismatch is only visible at debug level.
+func acceptedBindingTokens(cfg transport.Config) []uint32 {
+	own := channelBindingToken(cfg)
+	legacy := legacyBindingToken(cfg)
+	if own == legacy {
+		return []uint32{own}
+	}
+	return []uint32{own, legacy}
+}
+
+// sendBindingToken picks the token to stamp on outgoing frames.
+//
+// The default is the legacy room-derived token, because it is the only one a
+// not-yet-upgraded peer understands, and an upgraded peer accepts both. Once
+// every server and client in a deployment is upgraded, PerChannelBinding turns
+// on the per-channel token and restores isolation between co-located sessions
+// sharing one room.
+func sendBindingToken(cfg transport.Config) uint32 {
+	if cfg.PerChannelBinding {
+		return channelBindingToken(cfg)
+	}
+	return legacyBindingToken(cfg)
+}
+
+// acceptsBindingToken reports whether an incoming frame's token is one this
+// peer honours.
+//
+// An empty acceptedTokens means the transport was built without going through
+// newStreamTransport, so it falls back to the token it sends with. Treating
+// "unset" as "accept nothing" would silently drop every frame on such a path,
+// which is the same invisible failure this compatibility work exists to remove.
+func (p *streamTransport) acceptsBindingToken(token uint32) bool {
+	if len(p.acceptedTokens) == 0 {
+		return token == p.bindingToken
+	}
+	for _, accepted := range p.acceptedTokens {
+		if token == accepted {
+			return true
+		}
+	}
+	return false
+}
+
+// tokenMismatchLogInterval throttles the mismatch warning: a mismatching peer
+// produces one rejected frame per video frame, so logging each would bury the
+// very message it is meant to surface.
+const tokenMismatchLogInterval = 30 * time.Second
+
+// warnTokenMismatch reports rejected frames at warning level, at most once per
+// tokenMismatchLogInterval. This is deliberately louder than the rest of the
+// frame path: every frame is being dropped, so the tunnel carries nothing while
+// still looking established, and the operator has no other signal.
+func (p *streamTransport) warnTokenMismatch(token uint32) {
+	now := time.Now().UnixNano()
+	last := p.lastTokenWarnNano.Load()
+	if last != 0 && now-last < int64(tokenMismatchLogInterval) {
+		return
+	}
+	if !p.lastTokenWarnNano.CompareAndSwap(last, now) {
+		return
+	}
+	tokens := p.acceptedTokens
+	if len(tokens) == 0 {
+		tokens = []uint32{p.bindingToken}
+	}
+	accepted := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		accepted = append(accepted, fmt.Sprintf("0x%08x", t))
+	}
+	logger.Warnf("vp8channel: dropping frames, binding token mismatch got=0x%08x accepted=%s "+
+		"- peer likely built against a different binding-token scheme",
+		token, strings.Join(accepted, ","))
 }
 
 func randomEpoch() uint32 {
@@ -1185,8 +1280,8 @@ func (p *streamTransport) handleIncomingFrame(frame []byte) {
 		logger.Debugf("vp8channel: incoming frame bad header len=%d", len(frame))
 		return
 	}
-	if frameToken != p.bindingToken {
-		logger.Debugf("vp8channel: incoming frame token mismatch got=0x%08x want=0x%08x", frameToken, p.bindingToken)
+	if !p.acceptsBindingToken(frameToken) {
+		p.warnTokenMismatch(frameToken)
 		return
 	}
 	kcpPayload := frame[epochHdrLen:]

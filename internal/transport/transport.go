@@ -148,6 +148,15 @@ type Config struct {
 	// so they can accept initial broadcast CLIENT_HELLO frames.
 	RequireTargetedPeer bool
 
+	// PerChannelBinding stamps outgoing frames with the per-channel binding
+	// token instead of the legacy room-derived one. It isolates co-located
+	// sessions that share a room, but a peer that predates per-channel binding
+	// drops such frames outright, so it must stay off until every server and
+	// client in the deployment understands it. Receivers accept both tokens
+	// regardless of this setting, which is what allows the two sides to be
+	// upgraded one at a time.
+	PerChannelBinding bool
+
 	// Options carries transport-specific tuning. Type is per-transport-package.
 	Options Options
 
