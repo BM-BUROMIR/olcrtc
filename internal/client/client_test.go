@@ -25,6 +25,8 @@ var errUnexpectedConnectRequest = errors.New("unexpected connect request")
 const (
 	testConnectCommand = "connect"
 	testConnectHost    = "example.com"
+	testOldSessionID   = "old-session"
+	testHeldSessionID  = "same" + "-" + "session"
 )
 
 func TestSetupCipher(t *testing.T) {
@@ -746,6 +748,7 @@ func (s *closerLinkStub) ResetPeer()                      { s.resetCount++ }
 type reconnectTrackingLinkStub struct {
 	closerLinkStub
 	reconnectCh chan string
+	lossState   transport.IncomingTrackLossState
 }
 
 func (s *reconnectTrackingLinkStub) Reconnect(reason string) {
@@ -753,6 +756,10 @@ func (s *reconnectTrackingLinkStub) Reconnect(reason string) {
 	case s.reconnectCh <- reason:
 	default:
 	}
+}
+
+func (s *reconnectTrackingLinkStub) IncomingTrackLossState() transport.IncomingTrackLossState {
+	return s.lossState
 }
 
 func (s *closerLinkStub) NotifyLinkHealth(unhealthy bool) {
@@ -803,6 +810,111 @@ func TestResetLinkPeer(t *testing.T) {
 	}
 }
 
+func TestLivenessReconnectPausesOnTransientTrackLoss(t *testing.T) {
+	ln := &reconnectTrackingLinkStub{
+		reconnectCh: make(chan string, 1),
+		lossState: transport.IncomingTrackLossState{
+			Lost:      true,
+			Transient: true,
+		},
+	}
+	c := &Client{
+		ln:           ln,
+		health:       runtime.NewHealthTracker(nil),
+		sessionID:    testHeldSessionID,
+		sessionReady: make(chan struct{}),
+	}
+	c.recordSession(testHeldSessionID)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.handleReconnectForControlStream(ctx, Config{}, cancel, reconnectReasonLiveness, nil)
+
+	select {
+	case reason := <-ln.reconnectCh:
+		t.Fatalf("transient track loss triggered reconnect: %s", reason)
+	case <-time.After(100 * time.Millisecond):
+	}
+	if got := ln.resetCount; got != 0 {
+		t.Fatalf("ResetPeer calls = %d, want 0", got)
+	}
+	status := c.Status()
+	if status.SessionID != testHeldSessionID || status.Reconnects != 0 {
+		t.Fatalf("Status() = %+v, want same session without reconnect", status)
+	}
+}
+
+func TestLivenessReconnectContinuesOnPeerConnectionLoss(t *testing.T) {
+	ln := &reconnectTrackingLinkStub{
+		reconnectCh: make(chan string, 1),
+		lossState: transport.IncomingTrackLossState{
+			Lost:      true,
+			Transient: false,
+		},
+	}
+	c := &Client{
+		ln:           ln,
+		health:       runtime.NewHealthTracker(nil),
+		sessionID:    testOldSessionID,
+		sessionReady: make(chan struct{}),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.handleReconnectForControlStream(ctx, Config{}, cancel, reconnectReasonLiveness, nil)
+
+	select {
+	case reason := <-ln.reconnectCh:
+		if reason != reconnectReasonLiveness {
+			t.Fatalf("Reconnect reason = %q, want %s", reason, reconnectReasonLiveness)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for liveness reconnect")
+	}
+	if got := ln.resetCount; got != 1 {
+		t.Fatalf("ResetPeer calls = %d, want 1", got)
+	}
+	if status := c.Status(); status.Reconnects != 1 {
+		t.Fatalf("Status().Reconnects = %d, want 1", status.Reconnects)
+	}
+}
+
+func TestLivenessReconnectResumesAfterTransientTrackLossDeadline(t *testing.T) {
+	oldGrace := transientTrackLossReconnectDelay
+	transientTrackLossReconnectDelay = 20 * time.Millisecond
+	t.Cleanup(func() { transientTrackLossReconnectDelay = oldGrace })
+
+	ln := &reconnectTrackingLinkStub{
+		reconnectCh: make(chan string, 1),
+		lossState: transport.IncomingTrackLossState{
+			Lost:      true,
+			Transient: true,
+		},
+	}
+	c := &Client{
+		ln:           ln,
+		health:       runtime.NewHealthTracker(nil),
+		sessionID:    testOldSessionID,
+		sessionReady: make(chan struct{}),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c.handleReconnectForControlStream(ctx, Config{}, cancel, reconnectReasonLiveness, nil)
+
+	select {
+	case reason := <-ln.reconnectCh:
+		if reason != reconnectReasonLiveness {
+			t.Fatalf("Reconnect reason = %q, want %s", reason, reconnectReasonLiveness)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for delayed liveness reconnect")
+	}
+	if got := ln.resetCount; got != 1 {
+		t.Fatalf("ResetPeer calls = %d, want 1", got)
+	}
+}
+
 func TestStaleControlLoopDoesNotReconnectReplacementSession(t *testing.T) {
 	a, b := net.Pipe()
 	defer func() {
@@ -841,7 +953,7 @@ func TestStaleControlLoopDoesNotReconnectReplacementSession(t *testing.T) {
 		ln:           ln,
 		cipher:       cipher,
 		health:       runtime.NewHealthTracker(nil),
-		sessionID:    "old-session",
+		sessionID:    testOldSessionID,
 		sessionReady: make(chan struct{}),
 	}
 	ctx, cancel := context.WithCancel(context.Background())

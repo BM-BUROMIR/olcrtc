@@ -54,7 +54,11 @@ var (
 const (
 	defaultMaxSOCKSSessions          = 64
 	defaultMaxSOCKSSessionsPerTarget = 8
+	reconnectReasonLiveness          = "liveness"
 )
+
+//nolint:gochecknoglobals // tests shorten the production deadline.
+var transientTrackLossReconnectDelay = 30 * time.Second
 
 // Client handles local SOCKS5 connections and tunnels them to the server.
 type Client struct {
@@ -471,15 +475,21 @@ func (c *Client) handleReconnectForControlStream(
 	reason string,
 	source *smux.Stream,
 ) {
+	c.handleReconnectForControlStreamPause(ctx, cfg, cancel, reason, source, true)
+}
+
+func (c *Client) handleReconnectForControlStreamPause(
+	ctx context.Context,
+	cfg Config,
+	cancel context.CancelFunc,
+	reason string,
+	source *smux.Stream,
+	allowTransientPause bool,
+) {
 	c.reconnectMu.Lock()
 	defer c.reconnectMu.Unlock()
-	if source != nil {
-		c.sessMu.RLock()
-		current := c.controlStrm
-		c.sessMu.RUnlock()
-		if current != source {
-			return
-		}
+	if c.skipReconnectForControlStream(ctx, cfg, cancel, reason, source, allowTransientPause) {
+		return
 	}
 
 	c.recordReconnect()
@@ -532,8 +542,8 @@ func (c *Client) handleReconnectForControlStream(
 	// Re-handshaking over the dead carrier just times out repeatedly, so
 	// ask the carrier to rebuild itself; the new carrier will fire its own
 	// reconnect callback which then drives a fresh handshake.
-	if reason == "liveness" && c.ln != nil {
-		c.ln.Reconnect("liveness")
+	if reason == reconnectReasonLiveness && c.ln != nil {
+		c.ln.Reconnect(reconnectReasonLiveness)
 		// Return immediately - retryHandshake over the dead link would
 		// loop forever with "open control stream: timeout" while holding
 		// reconnectMu, blocking the carrier callback that fires once the
@@ -543,6 +553,82 @@ func (c *Client) handleReconnectForControlStream(
 	}
 
 	c.retryHandshake(ctx, cfg, cancel, reason)
+}
+
+func (c *Client) skipReconnectForControlStream(
+	ctx context.Context,
+	cfg Config,
+	cancel context.CancelFunc,
+	reason string,
+	source *smux.Stream,
+	allowTransientPause bool,
+) bool {
+	if source != nil {
+		c.sessMu.RLock()
+		current := c.controlStrm
+		c.sessMu.RUnlock()
+		if current != source {
+			return true
+		}
+	}
+	if allowTransientPause && reason == reconnectReasonLiveness &&
+		c.pauseTransientTrackLossReconnect(ctx, cfg, cancel, source) {
+		return true
+	}
+	return false
+}
+
+func (c *Client) pauseTransientTrackLossReconnect(
+	ctx context.Context,
+	cfg Config,
+	cancel context.CancelFunc,
+	source *smux.Stream,
+) bool {
+	if !c.hasTransientTrackLoss() {
+		return false
+	}
+	logger.Infof("client liveness reconnect paused: transient incoming track loss")
+	go c.resumeLivenessReconnectAfterTrackLoss(ctx, cfg, cancel, source)
+	return true
+}
+
+func (c *Client) resumeLivenessReconnectAfterTrackLoss(
+	ctx context.Context,
+	cfg Config,
+	cancel context.CancelFunc,
+	source *smux.Stream,
+) {
+	timer := time.NewTimer(transientTrackLossReconnectDelay)
+	defer timer.Stop()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+			logger.Warnf("client liveness reconnect resumed: transient incoming track loss deadline exceeded")
+			c.handleReconnectForControlStreamPause(ctx, cfg, cancel, reconnectReasonLiveness, source, false)
+			return
+		case <-ticker.C:
+			if !c.hasTransientTrackLoss() {
+				logger.Infof("client liveness reconnect skipped: incoming track recovered")
+				if source != nil {
+					c.startControlLoop(ctx, cfg, cancel, source)
+				}
+				return
+			}
+		}
+	}
+}
+
+func (c *Client) hasTransientTrackLoss() bool {
+	obs, ok := c.ln.(transport.IncomingTrackLossObserver)
+	if !ok {
+		return false
+	}
+	state := obs.IncomingTrackLossState()
+	return state.Lost && state.Transient
 }
 
 func (c *Client) retryHandshake(ctx context.Context, cfg Config, cancel context.CancelFunc, reason string) {
@@ -730,7 +816,7 @@ func (c *Client) startControlLoop(
 		}
 		// handleReconnect now retries indefinitely on liveness so it only
 		// returns false on ctx cancellation; don't tear down the client.
-		c.handleReconnectForControlStream(ctx, cfg, cancel, "liveness", stream)
+		c.handleReconnectForControlStream(ctx, cfg, cancel, reconnectReasonLiveness, stream)
 	}()
 }
 
@@ -892,6 +978,7 @@ func (c *Client) acceptLoop(ctx context.Context, ln net.Listener) {
 	}
 }
 
+//nolint:cyclop // SOCKS5 command flow is a fixed protocol sequence; keep behavior unchanged.
 func (c *Client) handleSocks5(ctx context.Context, conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 
@@ -995,6 +1082,7 @@ func (c *Client) acquireSOCKSSlot(ctx context.Context, conn net.Conn, target str
 	}
 }
 
+//nolint:nonamedreturns // Named values describe slot counters; keep the existing call contract.
 func (c *Client) tryAcquireSOCKSSlot(target string) (active, targetActive int64, blockedBy string, ok bool) {
 	c.socksTargetMu.Lock()
 	defer c.socksTargetMu.Unlock()
