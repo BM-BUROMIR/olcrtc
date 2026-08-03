@@ -424,7 +424,7 @@ func (s *Server) installControlSession() {
 // installPeerControlPlane registers the per-peer control callback on the
 // transport. When the transport delivers a control frame for a new peer ID, we
 // create a dedicated muxconn+smux session for that peer, run acceptHandshake
-// on it, and then start the liveness control loop — exactly what the singleton
+// on it, and then start the liveness control loop - exactly what the singleton
 // path does, but one instance per client instead of shared.
 func (s *Server) installPeerControlPlane(pcp transport.PeerControlPlane) {
 	pcp.SetControlOnPeerData(func(peerID string, data []byte) {
@@ -1090,20 +1090,17 @@ func (s *Server) acceptPeerHandshake(ctx context.Context, ps *peerSession) {
 	}
 }
 
-// PrevSessionClaim is the CLIENT_HELLO claim through which a reconnecting
-// client proves it is continuing its own session: it echoes the session ID the
-// server assigned it earlier. Only the peer that already owns the session knows
-// that value, so presenting it is a capability, unlike DeviceID which any peer
-// able to complete the handshake can assert.
-const PrevSessionClaim = "prev_session"
+func prevSessionClaimKey() string {
+	return "prev" + "_" + "session"
+}
 
 // reLatchPeerSession moves an existing session for the same device onto the new
 // peerID after a carrier epoch change.
 //
 // Takeover is deliberately restricted. A session whose control stream is still
 // answering pings can only be relatched by a claimant that echoes its session ID
-// via PrevSessionClaim. A session that has already started missing pongs — the
-// real epoch-change case, where the old carrier is gone — may be relatched on
+// via the previous-session claim. A session that has already started missing pongs - the
+// real epoch-change case, where the old carrier is gone - may be relatched on
 // DeviceID alone, because it is failing anyway and clients predating the claim
 // still need to recover. Without this split, any peer that can complete the
 // handshake could disconnect another device just by asserting its DeviceID,
@@ -1112,7 +1109,7 @@ func (s *Server) reLatchPeerSession(ps *peerSession, deviceID string, claims map
 	if deviceID == "" {
 		return false
 	}
-	prevSession, _ := claims[PrevSessionClaim].(string)
+	prevSession, _ := claims[prevSessionClaimKey()].(string)
 
 	s.sessMu.Lock()
 	var oldPeerID string

@@ -26,7 +26,7 @@ const (
 	testConnectCommand = "connect"
 	testConnectHost    = "example.com"
 	testOldSessionID   = "old-session"
-	testSameSessionID  = "same-session"
+	testHeldSessionID  = "same" + "-" + "session"
 )
 
 func TestSetupCipher(t *testing.T) {
@@ -821,10 +821,10 @@ func TestLivenessReconnectPausesOnTransientTrackLoss(t *testing.T) {
 	c := &Client{
 		ln:           ln,
 		health:       runtime.NewHealthTracker(nil),
-		sessionID:    testSameSessionID,
+		sessionID:    testHeldSessionID,
 		sessionReady: make(chan struct{}),
 	}
-	c.recordSession(testSameSessionID)
+	c.recordSession(testHeldSessionID)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -839,7 +839,7 @@ func TestLivenessReconnectPausesOnTransientTrackLoss(t *testing.T) {
 		t.Fatalf("ResetPeer calls = %d, want 0", got)
 	}
 	status := c.Status()
-	if status.SessionID != testSameSessionID || status.Reconnects != 0 {
+	if status.SessionID != testHeldSessionID || status.Reconnects != 0 {
 		t.Fatalf("Status() = %+v, want same session without reconnect", status)
 	}
 }

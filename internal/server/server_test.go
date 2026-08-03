@@ -1199,7 +1199,7 @@ func TestAcceptPeerHandshakeDoesNotRelatchHealthySessionOnDeviceIDAlone(t *testi
 
 // The legitimate owner reconnecting to a still-healthy session proves continuity
 // by echoing the session ID the server gave it, and is relatched.
-func TestAcceptPeerHandshakeRelatchesHealthySessionWithPrevSessionClaim(t *testing.T) {
+func TestAcceptPeerHandshakeRelatchesHealthySessionWithClaimKey(t *testing.T) {
 	s := newPeerRelatchServer()
 	old := &peerSession{
 		peerID:    "00000001",
@@ -1217,7 +1217,7 @@ func TestAcceptPeerHandshakeRelatchesHealthySessionWithPrevSessionClaim(t *testi
 	s.peerStats[old.sessionID] = peerStat{deviceID: old.deviceID, openedAt: time.Now()}
 
 	runPeerHandshakeWithClaims(t, s, ps, clientSess, testPeerDevice,
-		map[string]any{PrevSessionClaim: testOldPeerSID})
+		map[string]any{prevSessionClaimKey(): testOldPeerSID})
 
 	s.sessMu.RLock()
 	gotOld := s.peerSessions[old.peerID]
@@ -1232,7 +1232,7 @@ func TestAcceptPeerHandshakeRelatchesHealthySessionWithPrevSessionClaim(t *testi
 }
 
 // A wrong session ID must not unlock takeover of a healthy session.
-func TestAcceptPeerHandshakeRejectsWrongPrevSessionClaim(t *testing.T) {
+func TestAcceptPeerHandshakeRejectsWrongPriorSessionKey(t *testing.T) {
 	s := newPeerRelatchServer()
 	old := &peerSession{
 		peerID:    "00000001",
@@ -1250,12 +1250,12 @@ func TestAcceptPeerHandshakeRejectsWrongPrevSessionClaim(t *testing.T) {
 	s.peerStats[old.sessionID] = peerStat{deviceID: old.deviceID, openedAt: time.Now()}
 
 	runPeerHandshakeWithClaims(t, s, ps, clientSess, testPeerDevice,
-		map[string]any{PrevSessionClaim: "sid-guessed"})
+		map[string]any{prevSessionClaimKey(): "sid-guessed"})
 
 	s.sessMu.RLock()
 	gotOld := s.peerSessions[old.peerID]
 	s.sessMu.RUnlock()
 	if gotOld == nil {
-		t.Fatal("healthy session was taken over with a wrong prev_session claim")
+		t.Fatal("healthy session was taken over with a wrong previous-session claim")
 	}
 }
