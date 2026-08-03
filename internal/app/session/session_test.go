@@ -600,6 +600,11 @@ func TestValidateGen(t *testing.T) {
 			want: ErrUnsupportedCarrier,
 		},
 		{
+			name: "livekit room generation supported",
+			cfg:  Config{Auth: "livekit", DNSServer: "8.8.8.8:53", Amount: 1},
+			want: nil,
+		},
+		{
 			name: "missing auth",
 			cfg:  Config{DNSServer: "8.8.8.8:53", Amount: 1},
 			want: ErrAuthRequired,

@@ -29,6 +29,9 @@ olcrtc /etc/olcrtc/client.yaml
 - [`client.jitsi.seichannel.yaml`](./examples/client/client.jitsi.seichannel.yaml) - jitsi + seichannel cnc
 - [`server.jitsi.vp8channel.yaml`](./examples/server/server.jitsi.vp8channel.yaml) - jitsi + vp8channel srv
 - [`client.jitsi.vp8channel.yaml`](./examples/client/client.jitsi.vp8channel.yaml) - jitsi + vp8channel cnc
+- [`server.livekit.datachannel.yaml`](./examples/server/server.livekit.datachannel.yaml) - local livekit + datachannel srv
+- [`client.livekit.datachannel.yaml`](./examples/client/client.livekit.datachannel.yaml) - local livekit + datachannel cnc
+- [`gen.livekit.yaml`](./examples/gen.livekit.yaml) - генерация room ID для local livekit
 - [`server.telemost.datachannel.yaml`](./examples/server/server.telemost.datachannel.yaml) - telemost + datachannel srv
 - [`client.telemost.datachannel.yaml`](./examples/client/client.telemost.datachannel.yaml) - telemost + datachannel cnc
 - [`server.telemost.videochannel.yaml`](./examples/server/server.telemost.videochannel.yaml) - telemost + videochannel srv
@@ -52,7 +55,7 @@ olcrtc /etc/olcrtc/client.yaml
 | YAML path | Значение |
 |---|---|
 | `mode` | `srv`, `cnc` или `gen` |
-| `auth.provider` | `jitsi`, `telemost`, `wbstream`, `none` |
+| `auth.provider` | `jitsi`, `livekit`, `telemost`, `wbstream`, `none` |
 | `room.id` | ID/URL комнаты для выбранного auth-провайдера |
 | `room.channel` | необязательный ID канала для peer-routing сценариев |
 | `crypto.key` / `crypto.key_file` | общий ключ: 64 hex-символа, напрямую или из файла |
@@ -203,7 +206,9 @@ failover:
 
 ## mode: gen
 
-`gen` оставлен для auth-провайдеров, которые реализуют создание комнат через API.
-Текущие встроенные провайдеры (`jitsi`, `telemost`, `wbstream`) не создают комнаты
-через `olcrtc`: для `telemost` и `wbstream` создай комнату на сайте сервиса и
-вставь её в `room.id`; для `jitsi` укажи URL комнаты.
+`gen` оставлен для auth-провайдеров, которые реализуют создание комнат.
+Локальный `livekit` поддерживает генерацию room ID без внешнего API: комната
+создаётся локальным LiveKit при первом подключении. Остальные встроенные
+провайдеры (`jitsi`, `telemost`, `wbstream`) не создают комнаты через `olcrtc`:
+для `telemost` и `wbstream` создай комнату на сайте сервиса и вставь её в
+`room.id`; для `jitsi` укажи URL комнаты.

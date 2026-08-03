@@ -75,6 +75,7 @@ olcrtc client.yaml
 | Provider | Engine | Комментарий |
 |---|---|---|
 | `jitsi` | `jitsi` | URL комнаты Jitsi, инстансы в docs/examples/jitsi.instances.yaml, без отдельной регистрации |
+| `livekit` | `livekit` | локальный Docker LiveKit, dev token подпись без внешнего сервиса |
 | `telemost` | `goolom` | credentials через Yandex Telemost API, с отдельной регистрацией |
 | `wbstream` | `livekit` | credentials через WbBStream API, с отдельной регистрацией |
 | `none` | задаётся в `engine.name` | прямой engine-режим с `engine.url` и `engine.token`, с отдельной регистрацией |
@@ -104,7 +105,8 @@ olcrtc client.yaml
 | `seichannel` | payload в H264 SEI NAL units, ACK/retry | fallback для WB Stream / Jitsi|
 | `videochannel` | QR/tile кадры через ffmpeg, ACK/retry | экспериментальный визуальный транспорт |
 
-Рекомендуемый старт: `jitsi + datachannel`. Альтернатива: `wbstream + vp8channel`.
+Рекомендуемый старт: `jitsi + datachannel`. Для локальной разработки используй `livekit + datachannel`.
+Альтернатива: `wbstream + vp8channel`.
 
 ## Шифрование и handshake
 

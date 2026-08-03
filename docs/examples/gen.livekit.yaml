@@ -1,0 +1,16 @@
+# Генерация room ID для локального LiveKit
+# Run: olcrtc docs/examples/gen.livekit.yaml
+
+mode: gen
+
+auth:
+  provider: livekit
+
+gen:
+  amount: 1
+
+net:
+  dns: "8.8.8.8:53"
+
+data: data
+debug: false

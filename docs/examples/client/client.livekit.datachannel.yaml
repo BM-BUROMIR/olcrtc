@@ -1,0 +1,31 @@
+# Клиент: local livekit + datachannel
+# Run: olcrtc docs/examples/client/client.livekit.datachannel.yaml
+
+mode: cnc
+
+auth:
+  provider: livekit
+
+room:
+  id: "local-room"
+
+crypto:
+  key: "REPLACE_ME_WITH_64_HEX_CHARS"
+
+net:
+  transport: datachannel
+  dns: "8.8.8.8:53"
+
+liveness:
+  interval: 10s
+  timeout: 5s
+  failures: 3
+
+socks:
+  host: "127.0.0.1"
+  port: 8808
+  user: ""
+  pass: ""
+
+data: data
+debug: false

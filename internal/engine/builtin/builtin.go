@@ -13,6 +13,7 @@ import (
 
 	"github.com/openlibrecommunity/olcrtc/internal/auth"
 	authJitsi "github.com/openlibrecommunity/olcrtc/internal/auth/jitsi"
+	authLiveKit "github.com/openlibrecommunity/olcrtc/internal/auth/livekit"
 	authTelemost "github.com/openlibrecommunity/olcrtc/internal/auth/telemost"
 	authWBStream "github.com/openlibrecommunity/olcrtc/internal/auth/wbstream"
 	"github.com/openlibrecommunity/olcrtc/internal/engine"
@@ -78,12 +79,13 @@ func Available() []string {
 	return names
 }
 
-// RegisterDefaults wires the built-in carriers: jitsi, telemost, wbstream
-// and "none" (direct engine access).
+// RegisterDefaults wires the built-in carriers: jitsi, livekit, telemost,
+// wbstream and "none" (direct engine access).
 func RegisterDefaults() {
 	registerEngineAuth("wbstream", authWBStream.Provider{})
 	registerEngineAuth("telemost", authTelemost.Provider{})
 	registerEngineAuth("jitsi", authJitsi.Provider{})
+	registerEngineAuth("livekit", authLiveKit.Provider{})
 	registerDirect("none")
 }
 

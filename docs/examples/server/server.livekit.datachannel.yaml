@@ -1,0 +1,31 @@
+# Сервер: local livekit + datachannel
+# Run: olcrtc docs/examples/server/server.livekit.datachannel.yaml
+
+mode: srv
+
+auth:
+  provider: livekit
+
+room:
+  id: "local-room"
+
+crypto:
+  key: "REPLACE_ME_WITH_64_HEX_CHARS"
+
+net:
+  transport: datachannel
+  dns: "8.8.8.8:53"
+
+liveness:
+  interval: 10s
+  timeout: 5s
+  failures: 3
+
+socks:
+  proxy_addr: ""
+  proxy_port: 0
+  proxy_user: ""
+  proxy_pass: ""
+
+data: data
+debug: false

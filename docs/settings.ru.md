@@ -16,12 +16,12 @@
 
 ## Матрица совместимости
 
-| Transport | telemost | wbstream | jitsi |
-|-----------|:--------:|:--------:|:-----:|
-| datachannel | - | ~ | + |
-| vp8channel | + | + | ~ |
-| seichannel | - | + | ~ |
-| videochannel | + | + | ~ |
+| Transport | livekit | telemost | wbstream | jitsi |
+|-----------|:-------:|:--------:|:--------:|:-----:|
+| datachannel | + | - | ~ | + |
+| vp8channel | + | + | + | ~ |
+| seichannel | + | - | + | ~ |
+| videochannel | + | + | + | ~ |
 
 **Легенда:**
 - `+` - работает (pass в E2E тестах)
@@ -31,6 +31,8 @@
 **Telemost:** только vp8channel стабильно проходит. DataChannel удалён из Telemost. seichannel не поддерживается. videochannel - медленно.
 
 **WBStream:** все транспорты кроме datachannel работают. DataChannel в обычном guest flow без выдавания модератора не работает - WB Stream выдаёт токены с `canPublishData=false`, и DC не маршрутизирует данные. Чтобы использовать `datachannel` поверх `wbstream`, задай `auth.token` с токеном аккаунта/модератора (`canPublishData=true`); см. `auth.token` в необязательных полях ниже.
+
+**LiveKit:** локальный Docker stand из [`local-livekit.ru.md`](local-livekit.ru.md) выдаёт dev token с `canPublishData=true`, поэтому `datachannel` работает без ограничений боевых guest-flow.
 
 **Jitsi:** datachannel стабильно проходит - реализован поверх colibri-ws bridge channel и шлёт байты через `EndpointMessage{raw}` broadcast. Подходит для self-hosted и публичных Jitsi Meet инстансов без аутентификации (`https://meet.jit.si/...` и т.п.; инстансы в docs/examples/jitsi.instances.yaml). Проверьте в браузере, какой из серверов доступен в вашей сети. Видео-транспорты (vp8channel, seichannel, videochannel) экспонируют sendable VideoTrack через pion PeerConnection после Jingle session-accept, но Jicofo требует дополнительных протокольных шагов (LastN, ReceiverVideoConstraints, source-add) для маршрутизации видео - поэтому они помечены `~` .
 
@@ -47,7 +49,7 @@
 | YAML поле | Что вводить |
 |-----------|-------------|
 | `mode` | `srv` на сервере, `cnc` на клиенте, `gen` для генерации Room ID |
-| `auth.provider` | `telemost`, `wbstream`, `jitsi` или `none` |
+| `auth.provider` | `livekit`, `telemost`, `wbstream`, `jitsi` или `none` |
 | `net.transport` | `datachannel`, `vp8channel`, `seichannel` или `videochannel` |
 | `room.id` | Room ID |
 | `crypto.key` или `crypto.key_file` | Ключ шифрования hex 64 символа. Генерация: `openssl rand -hex 32` |
@@ -101,8 +103,8 @@ transport. Используй одинаковые traffic-настройки н
 
 ## mode: gen
 
-`gen` оставлен для auth-провайдеров, которые умеют создавать комнаты через API.
-Сейчас встроенные провайдеры не поддерживают автосоздание комнат через `olcrtc`.
+`gen` оставлен для auth-провайдеров, которые умеют создавать комнаты.
+Локальный `livekit` поддерживает генерацию room ID через `olcrtc`.
 
 Для `telemost` и `wbstream` создай комнату через сайт сервиса и вставь её ID в
 `room.id`. Для `jitsi` укажи URL комнаты.
