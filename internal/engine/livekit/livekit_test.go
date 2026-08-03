@@ -73,6 +73,8 @@ type fakeConnector struct {
 	rooms     []*fakeRoom
 	connected chan struct{}
 	err       error
+	failures  int
+	attempts  int
 }
 
 func newFakeConnector() *fakeConnector {
@@ -82,6 +84,11 @@ func newFakeConnector() *fakeConnector {
 func (c *fakeConnector) connect(url, token string, cb *lksdk.RoomCallback) (roomHandle, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.attempts++
+	if c.failures > 0 {
+		c.failures--
+		return nil, errFakeConnect
+	}
 	if c.err != nil {
 		return nil, c.err
 	}
@@ -98,6 +105,13 @@ func (c *fakeConnector) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.rooms)
+}
+
+// ai-generated: reports fake LiveKit connection attempts for startup retry tests.
+func (c *fakeConnector) attemptCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.attempts
 }
 
 func (c *fakeConnector) callback(i int) *lksdk.RoomCallback {
@@ -128,6 +142,35 @@ func waitFor(t *testing.T, cond func() bool) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatal("condition was not met before timeout")
+}
+
+// ai-generated: verifies LiveKit startup waits through transient connection errors.
+func TestConnectRetriesUntilRoomBecomesReachable(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	sess, err := New(ctx, engine.Config{URL: testOldURL, Token: testOldToken})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	s, ok := sess.(*Session)
+	if !ok {
+		t.Fatalf("New() type = %T, want *Session", sess)
+	}
+	connector := newFakeConnector()
+	connector.failures = 2
+	s.connectRoom = connector.connect
+	s.startupRetryDelay = time.Millisecond
+
+	if err := s.Connect(ctx); err != nil {
+		t.Fatalf("Connect() error = %v", err)
+	}
+	if got, want := connector.attemptCount(), 3; got != want {
+		t.Fatalf("connect attempts = %d, want %d", got, want)
+	}
+	if connector.count() != 1 {
+		t.Fatalf("connected rooms = %d, want 1", connector.count())
+	}
 }
 
 //nolint:cyclop // reconnect flow test keeps setup and postconditions in one scenario

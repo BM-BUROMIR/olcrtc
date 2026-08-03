@@ -24,12 +24,13 @@ import (
 )
 
 const (
-	defaultSendQueueSize    = 5000
-	defaultSendQueueCapHard = 4000
-	dataPublishTopic        = "olcrtc"
-	videoTrackName          = "videochannel"
-	reconnectWindow         = 5 * time.Minute
-	maxReconnects           = 10
+	defaultSendQueueSize     = 5000
+	defaultSendQueueCapHard  = 4000
+	dataPublishTopic         = "olcrtc"
+	videoTrackName           = "videochannel"
+	reconnectWindow          = 5 * time.Minute
+	maxReconnects            = 10
+	defaultStartupRetryDelay = 2 * time.Second
 )
 
 var (
@@ -121,32 +122,33 @@ func connectSDKRoom(url, token string, callback *lksdk.RoomCallback) (roomHandle
 
 // Session is the LiveKit engine handle.
 type Session struct {
-	url             string
-	token           string
-	name            string
-	refresh         func(ctx context.Context) (engine.Credentials, error)
-	connectRoom     connectRoomFunc
-	room            roomHandle
-	roomMu          sync.RWMutex
-	onData          func([]byte)
-	onReconnect     func(*webrtc.DataChannel)
-	shouldReconnect func() bool
-	onEnded         func(string)
-	reconnectCh     chan struct{}
-	closeCh         chan struct{}
-	lastReconnect   time.Time
-	reconnectCount  int
-	sendQueue       chan []byte
-	closed          atomic.Bool
-	reconnecting    atomic.Bool
-	done            chan struct{}
-	cancel          context.CancelFunc
-	shutdownOnce    sync.Once
-	sendWorkerOnce  sync.Once
-	videoTrackMu    sync.RWMutex
-	videoTracks     []webrtc.TrackLocal
-	onVideoTrack    func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
-	wg              sync.WaitGroup
+	url               string
+	token             string
+	name              string
+	refresh           func(ctx context.Context) (engine.Credentials, error)
+	connectRoom       connectRoomFunc
+	room              roomHandle
+	roomMu            sync.RWMutex
+	onData            func([]byte)
+	onReconnect       func(*webrtc.DataChannel)
+	shouldReconnect   func() bool
+	onEnded           func(string)
+	reconnectCh       chan struct{}
+	closeCh           chan struct{}
+	lastReconnect     time.Time
+	reconnectCount    int
+	startupRetryDelay time.Duration
+	sendQueue         chan []byte
+	closed            atomic.Bool
+	reconnecting      atomic.Bool
+	done              chan struct{}
+	cancel            context.CancelFunc
+	shutdownOnce      sync.Once
+	sendWorkerOnce    sync.Once
+	videoTrackMu      sync.RWMutex
+	videoTracks       []webrtc.TrackLocal
+	onVideoTrack      func(*webrtc.TrackRemote, *webrtc.RTPReceiver)
+	wg                sync.WaitGroup
 }
 
 // New creates a new LiveKit engine session.
@@ -159,17 +161,18 @@ func New(ctx context.Context, cfg engine.Config) (engine.Session, error) {
 	}
 	_, cancel := context.WithCancel(ctx)
 	return &Session{
-		url:         cfg.URL,
-		token:       cfg.Token,
-		name:        cfg.Name,
-		refresh:     cfg.Refresh,
-		connectRoom: connectSDKRoom,
-		onData:      cfg.OnData,
-		reconnectCh: make(chan struct{}, 1),
-		closeCh:     make(chan struct{}),
-		sendQueue:   make(chan []byte, defaultSendQueueSize),
-		done:        make(chan struct{}),
-		cancel:      cancel,
+		url:               cfg.URL,
+		token:             cfg.Token,
+		name:              cfg.Name,
+		refresh:           cfg.Refresh,
+		connectRoom:       connectSDKRoom,
+		onData:            cfg.OnData,
+		reconnectCh:       make(chan struct{}, 1),
+		closeCh:           make(chan struct{}),
+		startupRetryDelay: defaultStartupRetryDelay,
+		sendQueue:         make(chan []byte, defaultSendQueueSize),
+		done:              make(chan struct{}),
+		cancel:            cancel,
 	}, nil
 }
 
@@ -181,11 +184,43 @@ func (s *Session) Capabilities() engine.Capabilities {
 // Connect joins the LiveKit room.
 func (s *Session) Connect(ctx context.Context) error {
 	s.closed.Store(false)
-	if err := s.connectSession(ctx); err != nil {
+	if err := s.connectWithStartupRetry(ctx); err != nil {
 		return err
 	}
 	s.startSendWorker()
 	return nil
+}
+
+// ai-generated: waits for LiveKit signaling readiness during initial session startup.
+func (s *Session) connectWithStartupRetry(ctx context.Context) error {
+	delay := s.startupRetryDelay
+	if delay <= 0 {
+		delay = defaultStartupRetryDelay
+	}
+	for {
+		if err := s.connectSession(ctx); err != nil {
+			logger.Warnf("livekit startup connect failed: %v", err)
+			if err := s.waitStartupRetry(ctx, delay); err != nil {
+				return err
+			}
+			continue
+		}
+		return nil
+	}
+}
+
+// ai-generated: blocks between startup connection attempts while honoring shutdown.
+func (s *Session) waitStartupRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return fmt.Errorf("connect to livekit room: %w", ctx.Err())
+	case <-s.closeCh:
+		return ErrSessionClosed
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (s *Session) connectSession(_ context.Context) error {
