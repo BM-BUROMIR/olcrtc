@@ -1,0 +1,41 @@
+services:
+  livekit:
+    image: livekit/livekit-server:v1.9
+    command: ["--config", "/etc/livekit.yaml"]
+    environment:
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-devsecretdevsecretdevsecretdevsecret}"
+    ports:
+      - "${LIVEKIT_HTTP_PORT:-7880}:7880/tcp"
+      - "${LIVEKIT_TCP_PORT:-7881}:${LIVEKIT_TCP_PORT:-7881}/tcp"
+    volumes:
+      - ./livekit.yaml:/etc/livekit.yaml:ro
+  srv:
+    image: olcrtc-local-livekit:dev
+    profiles: ["stand"]
+    depends_on:
+      - livekit
+      - http
+    command:
+      - /bin/sh
+      - -c
+      - exec /usr/local/bin/olcrtc /run/olcrtc/srv.yaml >/run/olcrtc/logs/srv.log 2>&1
+    volumes:
+      - ./run:/run/olcrtc
+  cnc:
+    image: olcrtc-local-livekit:dev
+    profiles: ["stand"]
+    depends_on:
+      - livekit
+      - srv
+    command:
+      - /bin/sh
+      - -c
+      - exec /usr/local/bin/olcrtc /run/olcrtc/cnc.yaml >/run/olcrtc/logs/cnc.log 2>&1
+    ports:
+      - "${SOCKS_PORT:-8808}:8808/tcp"
+    volumes:
+      - ./run:/run/olcrtc
+  http:
+    image: olcrtc-local-livekit:dev
+    profiles: ["stand"]
+    command: ["/usr/local/bin/local-livekit-helper", "http-target"]
