@@ -1039,6 +1039,8 @@ func (s *Server) acceptHandshake(ctx context.Context, sess *smux.Session) bool {
 // and then starts the liveness control loop. It mirrors acceptHandshake but
 // writes sessionID/deviceID into the peerSession (not the shared server fields)
 // so multiple clients can complete their handshakes independently.
+//
+//nolint:cyclop // Handshake retry and relatch branches are kept together to preserve ordering.
 func (s *Server) acceptPeerHandshake(ctx context.Context, ps *peerSession) {
 	const maxStaleRetries = 3
 	for retry := 0; retry <= maxStaleRetries; retry++ {
@@ -1190,7 +1192,7 @@ func (s *Server) startPeerControlLoop(ctx context.Context, ps *peerSession, stre
 		}
 	}
 	liveness.OnMissedPong = func(missed int) {
-		ps.missedPongs.Store(int32(missed))
+		ps.missedPongs.Store(missedPongsValue(missed))
 		s.recordMissed(missed)
 		logger.Warnf("control missed pong peer=%s missed=%d", ps.peerID, missed)
 		if onMissedPong != nil {
@@ -1218,6 +1220,16 @@ func (s *Server) startPeerControlLoop(ctx context.Context, ps *peerSession, stre
 		}
 		s.removePeerSession(ps.peerID, "liveness")
 	}()
+}
+
+func missedPongsValue(missed int) int32 {
+	if missed <= 0 {
+		return 0
+	}
+	if missed > 1<<31-1 {
+		return 1<<31 - 1
+	}
+	return int32(missed)
 }
 
 func (s *Server) servePeer(ps *peerSession) {

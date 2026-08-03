@@ -24,6 +24,8 @@ const (
 	testBindingChannelID = "chan-xyz"
 )
 
+var _ transport.IncomingTrackLossObserver = (*streamTransport)(nil)
+
 // TestControlEpochTracksDataEpoch guards the issue #95 multi-client invariant:
 // the control-plane epoch is derived live from the data epoch as
 // localEpoch|controlEpochFlag. This lets the server correlate a client's data
