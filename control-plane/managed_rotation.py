@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import argparse
+import copy
 import json
 import os
 import pathlib
@@ -75,7 +76,10 @@ class DeviceEnvelopePublisher:
         for record in self.registry.publishable(profile_id):
             object_id = DeviceRegistry.object_id(record["device_id"], profile_id)
             previous = self.backend.get(object_id)
-            blob = encrypt_subscription(envelope, bytes.fromhex(record["client_key"]))
+            device_envelope = copy.deepcopy(envelope)
+            # ai-generated: add registry device id only to per-device bootstrap payloads.
+            device_envelope.setdefault("subscription", {})["device_id"] = record["device_id"]
+            blob = encrypt_subscription(device_envelope, bytes.fromhex(record["client_key"]))
             candidates.append((object_id, previous, blob))
 
         updated: list[tuple[str, bytes | None]] = []

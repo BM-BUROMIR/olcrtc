@@ -100,6 +100,23 @@ class DevicePublisherTest(unittest.TestCase):
         self.assertEqual(count, 1)
         self.assertEqual(list(backend.objects), ["first/telemost"])
 
+    def test_published_device_envelope_contains_registry_device_id(self) -> None:
+        backend = MemoryBackend()
+        envelope = {"generation": 2, "subscription": {"room": "room-a"}}
+
+        DeviceEnvelopePublisher(self.registry, backend).publish("telemost", envelope)
+
+        for record in (self.first, self.second):
+            object_id = DeviceRegistry.object_id(record["device_id"], "telemost")
+            published = decrypt_subscription(
+                backend.objects[object_id], bytes.fromhex(record["client_key"])
+            )
+            self.assertEqual(
+                published["subscription"]["device_id"],
+                record["device_id"],
+            )
+        self.assertNotIn("device_id", envelope["subscription"])
+
     def test_successful_publication_can_be_rolled_back_before_commit(self) -> None:
         old_payload = {"generation": 1}
         object_id = "first/telemost"

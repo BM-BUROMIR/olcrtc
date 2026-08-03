@@ -57,6 +57,7 @@ class WBExistingRoomTest(unittest.TestCase):
         self.assertRegex(subscription["channel"], r"^olc-[0-9a-f]{16}$")
         self.assertRegex(subscription["crypto_key"], r"^[0-9a-f]{64}$")
         self.assertNotIn("token", subscription)
+        self.assertNotIn("device_id", subscription)
 
     def test_private_value_is_trimmed_and_required(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
