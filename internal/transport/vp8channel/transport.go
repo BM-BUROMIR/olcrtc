@@ -166,8 +166,8 @@ type streamTransport struct {
 	acceptedTokens    []uint32
 	lastTokenWarnNano atomic.Int64
 	epochMu           sync.RWMutex
-	localEpoch   uint32
-	peerEpoch    atomic.Uint32
+	localEpoch        uint32
+	peerEpoch         atomic.Uint32
 
 	// lastPeerFrameNano stamps the wall-clock time of the most recent frame
 	// from the latched peer epoch. peerRestarting guards the carrier rebuild
@@ -191,6 +191,10 @@ type streamTransport struct {
 	// actually confirmed trouble, so unrelated room participants (a second
 	// client's epoch broadcast) can never trip a false carrier rebuild.
 	linkUnhealthy atomic.Bool
+
+	// ai-generated: incoming track loss latch for room membership changes.
+	incomingTrackLost          atomic.Bool
+	incomingTrackLossTransient atomic.Bool
 
 	kcp   *kcpRuntime
 	kcpMu sync.RWMutex
@@ -743,6 +747,32 @@ func (p *streamTransport) NotifyLinkHealth(unhealthy bool) {
 	p.linkUnhealthy.Store(unhealthy)
 }
 
+// IncomingTrackLossState implements transport.IncomingTrackLossObserver.
+//
+// ai-generated: new method for vp8channel transient track loss.
+func (p *streamTransport) IncomingTrackLossState() transport.IncomingTrackLossState {
+	lost := p.incomingTrackLost.Load()
+	if !lost {
+		return transport.IncomingTrackLossState{}
+	}
+	return transport.IncomingTrackLossState{
+		Lost:      true,
+		Transient: p.incomingTrackLossTransient.Load(),
+	}
+}
+
+// ai-generated: helper for vp8channel incoming track loss latch.
+func (p *streamTransport) recordIncomingTrackLoss() {
+	p.incomingTrackLossTransient.Store(p.stream.SubscriberCanSend())
+	p.incomingTrackLost.Store(true)
+}
+
+// ai-generated: helper for vp8channel incoming track loss latch.
+func (p *streamTransport) resetIncomingTrackLoss() {
+	p.incomingTrackLost.Store(false)
+	p.incomingTrackLossTransient.Store(false)
+}
+
 func (p *streamTransport) SetReconnectCallback(cb func()) {
 	p.reconnectMu.Lock()
 	p.reconnectFn = cb
@@ -1057,6 +1087,14 @@ func (p *streamTransport) handleRemoteTrack(track *webrtc.TrackRemote, _ *webrtc
 	// We don't reset KCP here. Peer restarts are detected by the epoch
 	// header on incoming frames, which works even when the SFU keeps
 	// forwarding the same track across our restarts.
+	//
+	// Track end while SubscriberCanSend stays true is not normal VP8/KCP
+	// behavior. It is a consequence of how carrier subscriptions are updated
+	// when room membership changes: the peer connection can survive while the
+	// subscribed remote publication is removed and later replaced. Record it
+	// as transient state here, but reset the symptom when a fresh VP8 track
+	// arrives.
+	p.resetIncomingTrackLoss()
 	go p.readVP8Track(track)
 }
 
@@ -1216,6 +1254,7 @@ func (p *streamTransport) readVP8Track(track *webrtc.TrackRemote) {
 	for {
 		n, _, err := track.Read(buf)
 		if err != nil {
+			p.recordIncomingTrackLoss()
 			logger.Infof("vp8channel: readVP8Track closed track=%s rtp=%d frames=%d err=%v",
 				track.ID(), rtpCount, frameCount, err)
 			return
