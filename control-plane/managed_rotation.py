@@ -285,7 +285,7 @@ class OlcSocksProbe:
             "room": {"id": subscription["room"], "channel": subscription["channel"]},
             "crypto": {"key": subscription["crypto_key"]},
             "net": {"transport": subscription.get("transport", "vp8channel"), "dns": "8.8.8.8:53"},
-            "vp8": {"fps": 30, "batch_size": 8, "max_bytes_per_sec": 60000},
+            "vp8": {"fps": 30, "batch_size": 8},
             "socks": {"host": "127.0.0.1", "port": port, "max_sessions": 24},
             "data": str(self.work_dir / "data"),
         }

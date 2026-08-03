@@ -282,3 +282,5 @@ tools/ios-testflight/fastlane/report.xml
 tools/ios-testflight/fastlane/screenshots/
 tools/ios-testflight/fastlane/test_output/
 artifacts/control-plane-deploy/olcrtc-linux-amd64
+.opencode
+.direnv

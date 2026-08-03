@@ -44,6 +44,8 @@ const (
 	// DefaultFailures is the default number of consecutive missed pongs before
 	// the stream is marked unhealthy.
 	DefaultFailures = 4
+
+	expiredPongSeqLimit = 64
 )
 
 // MsgType labels a control message.
@@ -164,10 +166,17 @@ type state struct {
 
 	out chan Message
 
-	mu       sync.Mutex
-	pending  map[uint64]time.Time
-	nextSeq  uint64
-	failures int
+	mu               sync.Mutex
+	pending          map[uint64]time.Time
+	expiredPongs     map[uint64]expiredPong
+	expiredPongOrder []uint64
+	nextSeq          uint64
+	failures         int
+}
+
+type expiredPong struct {
+	sent    time.Time
+	expired time.Time
 }
 
 func (s *state) readLoop(ctx context.Context) error {
@@ -246,9 +255,11 @@ func (s *state) sendProbe(ctx context.Context) error {
 			continue
 		}
 		delete(s.pending, seq)
+		s.rememberExpiredPongLocked(seq, sent, now)
 		s.failures++
 		missedNow++
 	}
+	s.pruneExpiredPongsLocked(now)
 	missed := s.failures
 	if s.failures >= s.cfg.Failures {
 		s.mu.Unlock()
@@ -284,6 +295,15 @@ func (s *state) handlePong(msg Message) {
 	sent, ok := s.pending[msg.Seq]
 	if ok {
 		delete(s.pending, msg.Seq)
+	} else {
+		s.pruneExpiredPongsLocked(now)
+		if expired, expiredOK := s.expiredPongs[msg.Seq]; expiredOK {
+			sent = expired.sent
+			delete(s.expiredPongs, msg.Seq)
+			ok = true
+		}
+	}
+	if ok {
 		s.failures = 0
 	}
 	s.mu.Unlock()
@@ -291,11 +311,63 @@ func (s *state) handlePong(msg Message) {
 	if !ok || s.cfg.OnPong == nil {
 		return
 	}
+	// For an expired-but-recent pong, RTT is still the real elapsed time
+	// since the original probe was sent. Reporting that measured age is more
+	// useful than clamping it to Timeout, and avoids inventing a fake value.
 	s.cfg.OnPong(Health{
 		Seq:      msg.Seq,
 		RTT:      now.Sub(sent),
 		LastSeen: now,
 	})
+}
+
+func (s *state) rememberExpiredPongLocked(seq uint64, sent, now time.Time) {
+	if s.expiredPongs == nil {
+		s.expiredPongs = make(map[uint64]expiredPong)
+	}
+	s.expiredPongs[seq] = expiredPong{sent: sent, expired: now}
+	s.expiredPongOrder = append(s.expiredPongOrder, seq)
+	s.pruneExpiredPongsLocked(now)
+}
+
+func (s *state) pruneExpiredPongsLocked(now time.Time) {
+	if len(s.expiredPongs) == 0 {
+		s.expiredPongOrder = s.expiredPongOrder[:0]
+		return
+	}
+	ttl := s.expiredPongTTL()
+	write := 0
+	for _, seq := range s.expiredPongOrder {
+		expired, ok := s.expiredPongs[seq]
+		if !ok {
+			continue
+		}
+		if ttl > 0 && now.Sub(expired.expired) > ttl {
+			delete(s.expiredPongs, seq)
+			continue
+		}
+		s.expiredPongOrder[write] = seq
+		write++
+	}
+	s.expiredPongOrder = s.expiredPongOrder[:write]
+	for len(s.expiredPongOrder) > expiredPongSeqLimit {
+		seq := s.expiredPongOrder[0]
+		delete(s.expiredPongs, seq)
+		copy(s.expiredPongOrder, s.expiredPongOrder[1:])
+		s.expiredPongOrder = s.expiredPongOrder[:len(s.expiredPongOrder)-1]
+	}
+}
+
+func (s *state) expiredPongTTL() time.Duration {
+	timeout := s.cfg.Timeout
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
+	failures := s.cfg.Failures
+	if failures <= 0 {
+		failures = DefaultFailures
+	}
+	return timeout * time.Duration(failures)
 }
 
 func (s *state) enqueue(ctx context.Context, msg Message) error {

@@ -186,11 +186,18 @@ type Config struct {
 	Token                 string
 	RoomID                string
 	ChannelID             string
+	// DeviceID pins the identity announced in CLIENT_HELLO; DeviceIDPath
+	// persists a generated one across runs. With both empty the client
+	// registers as a new device on every start, which breaks reconnection
+	// recognition and per-device accounting.
+	DeviceID              string
+	DeviceIDPath          string
 	KeyHex                string
 	SOCKSHost             string
 	SOCKSPort             int
 	SOCKSUser             string
 	SOCKSPass             string
+	SOCKSMaxSessions      int
 	SOCKSBlockPorts       []int
 	SOCKSBlockHosts       []string
 	SOCKSBlockCIDRs       []string
@@ -706,15 +713,18 @@ func runOnce(
 		return nil
 	case modeCNC:
 		if err := client.Run(ctx, client.Config{
-			Transport: cfg.Transport,
-			Carrier:   cfg.Auth,
-			RoomURL:   roomURL,
-			ChannelID: cfg.ChannelID,
-			KeyHex:    cfg.KeyHex,
-			LocalAddr: fmt.Sprintf("%s:%d", cfg.SOCKSHost, cfg.SOCKSPort),
-			DNSServer: cfg.DNSServer,
-			SOCKSUser: cfg.SOCKSUser,
-			SOCKSPass: cfg.SOCKSPass,
+			Transport:        cfg.Transport,
+			Carrier:          cfg.Auth,
+			RoomURL:          roomURL,
+			ChannelID:        cfg.ChannelID,
+			DeviceID:         cfg.DeviceID,
+			DeviceIDPath:     cfg.DeviceIDPath,
+			KeyHex:           cfg.KeyHex,
+			LocalAddr:        fmt.Sprintf("%s:%d", cfg.SOCKSHost, cfg.SOCKSPort),
+			DNSServer:        cfg.DNSServer,
+			SOCKSUser:        cfg.SOCKSUser,
+			SOCKSPass:        cfg.SOCKSPass,
+			MaxSOCKSSessions: cfg.SOCKSMaxSessions,
 			SOCKSBlockPolicy: client.SOCKSBlockPolicy{
 				Ports: cfg.SOCKSBlockPorts,
 				Hosts: cfg.SOCKSBlockHosts,

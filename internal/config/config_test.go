@@ -38,6 +38,7 @@ socks:
   port: 1080
   user: u
   pass: p
+  max_sessions: 17
   block_ports: [993, 5223]
   block_hosts: ["*.apple.com"]
   block_cidrs: ["17.0.0.0/8"]
@@ -101,6 +102,7 @@ func requireAppliedConfig(t *testing.T, got session.Config) {
 		SOCKSPort:             1080,
 		SOCKSUser:             "u",
 		SOCKSPass:             "p",
+		SOCKSMaxSessions:      17,
 		SOCKSBlockPorts:       []int{993, 5223},
 		SOCKSBlockHosts:       []string{"*.apple.com"},
 		SOCKSBlockCIDRs:       []string{"17.0.0.0/8"},
@@ -180,6 +182,7 @@ profiles:
     vp8:
       fps: 30
     socks:
+      max_sessions: 12
       block_ports: [5223]
       block_cidrs: ["17.0.0.0/8"]
     liveness:
@@ -222,6 +225,7 @@ failover:
 		t.Fatalf("first profile = %+v", first)
 	}
 	if first.KeyHex != "shared-key" || first.DNSServer != testDNSServer || first.VP8.FPS != 30 ||
+		first.SOCKSMaxSessions != 12 ||
 		first.LivenessInterval != "1s" || first.LivenessTimeout != "2s" || first.LivenessFailures != 5 ||
 		first.MaxSessionDuration != "30m" || first.TrafficMaxPayloadSize != 4096 ||
 		first.TrafficMinDelay != "10ms" || first.TrafficMaxDelay != "20ms" {
@@ -354,5 +358,45 @@ func TestLoadInvalidUTF8(t *testing.T) {
 	_, err := Load(path)
 	if !errors.Is(err, ErrConfigInvalidUTF8) {
 		t.Fatalf("Load() error = %v, want invalid UTF-8 error", err)
+	}
+}
+
+// device_id must survive the YAML -> session.Config hop. Without it the client
+// falls back to a fresh random identity per run, which is what breaks
+// reconnection recognition and per-device accounting.
+func TestApplyCarriesDeviceIdentity(t *testing.T) {
+	f := File{}
+	f.DeviceID = "owner-iphone"
+	f.DeviceIDPath = "/var/lib/olc/device-id"
+
+	got := Apply(session.Config{}, f)
+
+	if got.DeviceID != "owner-iphone" {
+		t.Fatalf("DeviceID = %q, want %q", got.DeviceID, "owner-iphone")
+	}
+	if got.DeviceIDPath != "/var/lib/olc/device-id" {
+		t.Fatalf("DeviceIDPath = %q, want %q", got.DeviceIDPath, "/var/lib/olc/device-id")
+	}
+}
+
+// An explicit value already present in the destination wins over the file, the
+// same precedence every other field in Apply uses.
+func TestApplyDeviceIdentityDoesNotOverrideExplicit(t *testing.T) {
+	f := File{}
+	f.DeviceID = "from-file"
+
+	got := Apply(session.Config{DeviceID: "explicit"}, f)
+
+	if got.DeviceID != "explicit" {
+		t.Fatalf("DeviceID = %q, want explicit to win", got.DeviceID)
+	}
+}
+
+// Absent device identity stays empty so the existing random-per-run behaviour is
+// unchanged for configs that do not opt in.
+func TestApplyWithoutDeviceIdentityLeavesEmpty(t *testing.T) {
+	got := Apply(session.Config{}, File{})
+	if got.DeviceID != "" || got.DeviceIDPath != "" {
+		t.Fatalf("expected empty identity, got %q / %q", got.DeviceID, got.DeviceIDPath)
 	}
 }

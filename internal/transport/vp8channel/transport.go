@@ -14,6 +14,7 @@ import (
 	"hash/crc32"
 	"hash/fnv"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -160,7 +161,11 @@ type streamTransport struct {
 	// upper-layer resets rotate it so the peer can reset its KCP state too.
 	// Peer-triggered resets keep it stable to avoid reset ping-pong.
 	bindingToken uint32
-	epochMu      sync.RWMutex
+	// acceptedTokens are the binding tokens honoured on receive. It holds more
+	// than one while a deployment straddles the switch to per-channel binding.
+	acceptedTokens    []uint32
+	lastTokenWarnNano atomic.Int64
+	epochMu           sync.RWMutex
 	localEpoch   uint32
 	peerEpoch    atomic.Uint32
 
@@ -176,6 +181,16 @@ type streamTransport struct {
 	lastPeerFrameNano atomic.Int64
 	peerRestarting    atomic.Bool
 	peerRestartGrace  time.Duration
+
+	// ai-generated: new field, peer-restart-corroboration PR.
+	//
+	// linkUnhealthy corroborates the peer-restart heuristic with an
+	// independent signal from the client's control-plane liveness loop
+	// (pushed via NotifyLinkHealth). Zero-value false means "not known
+	// unhealthy" - maybePeerRestart stays inert until the control plane has
+	// actually confirmed trouble, so unrelated room participants (a second
+	// client's epoch broadcast) can never trip a false carrier rebuild.
+	linkUnhealthy atomic.Bool
 
 	kcp   *kcpRuntime
 	kcpMu sync.RWMutex
@@ -285,18 +300,19 @@ func newStreamTransport(
 		batchSize = defaultBatchSize
 	}
 	tr := &streamTransport{
-		stream:          stream,
-		track:           track,
-		onData:          cfg.OnData,
-		onPeerData:      cfg.OnPeerData,
-		outbound:        make(chan []byte, outboundQueueSize),
-		controlOutbound: make(chan []byte, controlOutboundQueueSize),
-		closeCh:         make(chan struct{}),
-		writerDone:      make(chan struct{}),
-		frameInterval:   time.Second / time.Duration(fps),
-		batchSize:       batchSize,
-		bindingToken:    bindingToken(cfg.RoomURL),
-		localEpoch:      randomEpoch(),
+		stream:           stream,
+		track:            track,
+		onData:           cfg.OnData,
+		onPeerData:       cfg.OnPeerData,
+		outbound:         make(chan []byte, outboundQueueSize),
+		controlOutbound:  make(chan []byte, controlOutboundQueueSize),
+		closeCh:          make(chan struct{}),
+		writerDone:       make(chan struct{}),
+		frameInterval:    time.Second / time.Duration(fps),
+		batchSize:        batchSize,
+		bindingToken:     sendBindingToken(cfg),
+		acceptedTokens:   acceptedBindingTokens(cfg),
+		localEpoch:       randomEpoch(),
 		peers:            make(map[uint32]*kcpRuntime),
 		peerOut:          make(map[uint32]chan []byte),
 		ctrlPeers:        make(map[uint32]*peerControlKCP),
@@ -475,6 +491,107 @@ func bindingToken(clientID string) uint32 {
 	return token
 }
 
+// channelBindingToken derives a per-session token so multiple olcrtc pairs
+// in the same SFU room (e.g. concurrent e2e runs or real multi-tenant usage)
+// do not accept each other's VP8/KCP frames. ChannelID is unique per process
+// when set; falling back to RoomURL preserves compatibility for deployments
+// that rely on room-level isolation.
+func channelBindingToken(cfg transport.Config) uint32 {
+	if cfg.ChannelID != "" {
+		return bindingToken(cfg.ChannelID)
+	}
+	return bindingToken(cfg.RoomURL)
+}
+
+// legacyBindingToken is the room-derived token used before per-channel binding
+// was introduced. Peers that predate that change tag every frame with it and
+// accept nothing else, so a mixed fleet only interoperates while both tokens
+// are honoured on receive.
+func legacyBindingToken(cfg transport.Config) uint32 {
+	return bindingToken(cfg.RoomURL)
+}
+
+// acceptedBindingTokens lists every token this peer will accept on an incoming
+// frame: its own, plus the legacy room-derived one while they differ.
+//
+// Sending is a separate decision (see sendBindingToken): a peer may accept both
+// yet still have to emit the legacy token, because an un-upgraded remote end
+// drops everything else. Accepting both is what makes a staged rollout
+// possible at all — without it, updating either side alone silently blackholes
+// every frame, since a token mismatch is only visible at debug level.
+func acceptedBindingTokens(cfg transport.Config) []uint32 {
+	own := channelBindingToken(cfg)
+	legacy := legacyBindingToken(cfg)
+	if own == legacy {
+		return []uint32{own}
+	}
+	return []uint32{own, legacy}
+}
+
+// sendBindingToken picks the token to stamp on outgoing frames.
+//
+// The default is the legacy room-derived token, because it is the only one a
+// not-yet-upgraded peer understands, and an upgraded peer accepts both. Once
+// every server and client in a deployment is upgraded, PerChannelBinding turns
+// on the per-channel token and restores isolation between co-located sessions
+// sharing one room.
+func sendBindingToken(cfg transport.Config) uint32 {
+	if cfg.PerChannelBinding {
+		return channelBindingToken(cfg)
+	}
+	return legacyBindingToken(cfg)
+}
+
+// acceptsBindingToken reports whether an incoming frame's token is one this
+// peer honours.
+//
+// An empty acceptedTokens means the transport was built without going through
+// newStreamTransport, so it falls back to the token it sends with. Treating
+// "unset" as "accept nothing" would silently drop every frame on such a path,
+// which is the same invisible failure this compatibility work exists to remove.
+func (p *streamTransport) acceptsBindingToken(token uint32) bool {
+	if len(p.acceptedTokens) == 0 {
+		return token == p.bindingToken
+	}
+	for _, accepted := range p.acceptedTokens {
+		if token == accepted {
+			return true
+		}
+	}
+	return false
+}
+
+// tokenMismatchLogInterval throttles the mismatch warning: a mismatching peer
+// produces one rejected frame per video frame, so logging each would bury the
+// very message it is meant to surface.
+const tokenMismatchLogInterval = 30 * time.Second
+
+// warnTokenMismatch reports rejected frames at warning level, at most once per
+// tokenMismatchLogInterval. This is deliberately louder than the rest of the
+// frame path: every frame is being dropped, so the tunnel carries nothing while
+// still looking established, and the operator has no other signal.
+func (p *streamTransport) warnTokenMismatch(token uint32) {
+	now := time.Now().UnixNano()
+	last := p.lastTokenWarnNano.Load()
+	if last != 0 && now-last < int64(tokenMismatchLogInterval) {
+		return
+	}
+	if !p.lastTokenWarnNano.CompareAndSwap(last, now) {
+		return
+	}
+	tokens := p.acceptedTokens
+	if len(tokens) == 0 {
+		tokens = []uint32{p.bindingToken}
+	}
+	accepted := make([]string, 0, len(tokens))
+	for _, t := range tokens {
+		accepted = append(accepted, fmt.Sprintf("0x%08x", t))
+	}
+	logger.Warnf("vp8channel: dropping frames, binding token mismatch got=0x%08x accepted=%s "+
+		"- peer likely built against a different binding-token scheme",
+		token, strings.Join(accepted, ","))
+}
+
 func randomEpoch() uint32 {
 	var b [4]byte
 	if _, err := rand.Read(b[:]); err != nil {
@@ -613,6 +730,17 @@ func (p *streamTransport) ResetPeer() {
 // Reconnect forwards to the underlying engine session.
 func (p *streamTransport) Reconnect(reason string) {
 	p.stream.Reconnect(reason)
+}
+
+// NotifyLinkHealth implements transport.LinkHealthObserver. The client
+// wires its control-plane liveness loop to this so maybePeerRestart can
+// require corroborating evidence before firing (a second client joining the
+// SFU room broadcasts its own epoch to everyone, which alone must not be
+// mistaken for "my server restarted").
+//
+// ai-generated: new method, peer-restart-corroboration PR.
+func (p *streamTransport) NotifyLinkHealth(unhealthy bool) {
+	p.linkUnhealthy.Store(unhealthy)
 }
 
 func (p *streamTransport) SetReconnectCallback(cb func()) {
@@ -1133,6 +1261,37 @@ func (p *streamTransport) handleFirstPeer(peerEpoch uint32) {
 	logger.Infof("vp8channel: peer latched epoch=0x%08x", peerEpoch)
 }
 
+// alignDataLatchWithControlPeer points the data latch at the peer that owns the
+// control stream, given the source control epoch of a frame addressed to us.
+//
+// Only the server addresses our control epoch directly — other participants
+// broadcast with dst==0 — so a targeted control frame identifies the server
+// beyond doubt, and its data epoch is the same value without the control flag.
+//
+// The data latch, by contrast, is taken from the first foreign data epoch seen.
+// In a room that already holds another client, that can easily be the other
+// client's broadcast. The result is a session that looks entirely healthy —
+// handshake completes and liveness keeps passing, because both ride the control
+// plane — while the data plane is bound to a peer that will never answer. No
+// traffic flows, nothing is logged, and the peer-restart watchdog stays inert
+// precisely because the control plane is fine. Observed as a permanently dead
+// tunnel that reports itself connected.
+//
+// Re-pointing the latch here closes that gap using a signal the client already
+// receives and already trusts.
+func (p *streamTransport) alignDataLatchWithControlPeer(srcControlEpoch uint32) {
+	serverData := srcControlEpoch &^ controlEpochFlag
+	if serverData == 0 {
+		return
+	}
+	if p.peerEpoch.Load() == serverData {
+		return
+	}
+	logger.Warnf("vp8channel: data latch 0x%08x is not the control peer 0x%08x "+
+		"- relatching to the server", p.peerEpoch.Load(), serverData)
+	p.handleFirstPeer(serverData)
+}
+
 // acceptsDst reports whether a frame addressed to dst is for us. dst==0 is a
 // broadcast (accepted by everyone, used before the sender has learned our
 // epoch). Otherwise the frame must target either our data epoch or our
@@ -1152,8 +1311,8 @@ func (p *streamTransport) handleIncomingFrame(frame []byte) {
 		logger.Debugf("vp8channel: incoming frame bad header len=%d", len(frame))
 		return
 	}
-	if frameToken != p.bindingToken {
-		logger.Debugf("vp8channel: incoming frame token mismatch got=0x%08x want=0x%08x", frameToken, p.bindingToken)
+	if !p.acceptsBindingToken(frameToken) {
+		p.warnTokenMismatch(frameToken)
 		return
 	}
 	kcpPayload := frame[epochHdrLen:]
@@ -1182,12 +1341,17 @@ func (p *streamTransport) handleIncomingFrame(frame []byte) {
 	p.handleSinglePeerData(src, kcpPayload)
 }
 
+// ai-generated: doc comment updated (last clause about corroboration),
+// peer-restart-corroboration PR; function body predates it.
+//
 // handleSinglePeerData delivers a data frame in single-peer (client) mode. It
 // latches the first peer epoch seen. When the latched peer has gone silent
 // past peerRestartGrace and a frame from a different epoch arrives, that is
-// read as a server restart (the server rejoins the SFU with a fresh epoch) and
-// triggers a full carrier rebuild instead of waiting out the relaxed
-// control-liveness window (issue #105).
+// read as a possible server restart (the server rejoins the SFU with a fresh
+// epoch) and triggers a full carrier rebuild instead of waiting out the
+// relaxed control-liveness window (issue #105) - but only once the
+// control-plane liveness loop has independently corroborated trouble, see
+// maybePeerRestart.
 func (p *streamTransport) handleSinglePeerData(src uint32, kcpPayload []byte) {
 	switch {
 	case !p.peerConfirmed.Load():
@@ -1210,11 +1374,28 @@ func (p *streamTransport) handleSinglePeerData(src uint32, kcpPayload []byte) {
 	}
 }
 
-// maybePeerRestart reads a frame from a non-latched epoch as a server restart
-// once the latched peer has been silent longer than peerRestartGrace. A live
-// peer keeps the latch fresh by emitting a keepalive every ~2s, so a different
-// epoch arriving after a silence gap means the old peer is gone and a fresh one
-// (a restarted server) has taken its place.
+// ai-generated: existing function, guard clause + doc comment update added
+// by the peer-restart-corroboration PR (linkUnhealthy check at the top of
+// the function body below is the new part; the rest of the function and
+// doc predates this change).
+//
+// maybePeerRestart reads a frame from a non-latched epoch as a possible
+// server restart once the latched peer has been silent longer than
+// peerRestartGrace. A live peer keeps the latch fresh by emitting a keepalive
+// every ~2s, so a different epoch arriving after a silence gap COULD mean the
+// old peer is gone and a fresh one (a restarted server) has taken its place -
+// but in an SFU room it just as easily means an unrelated participant (e.g. a
+// second olcbox client) joined or reconnected and its epoch is now being
+// broadcast to everyone, us included. Epoch churn alone cannot tell the two
+// apart.
+//
+// To avoid tearing down a perfectly healthy carrier over unrelated room
+// noise, we require independent corroboration: linkUnhealthy, pushed by
+// the client's own control-plane liveness loop (NotifyLinkHealth), must
+// already be true. A genuine server restart kills that liveness link almost
+// immediately (it's a session-specific channel to the actual server, not
+// affected by other peers), so real restarts still recover fast; a second
+// client's epoch alone, with our control-plane still healthy, is now ignored.
 //
 // Recovery drives the full carrier rebuild via stream.Reconnect - the same
 // path control-liveness loss uses - rather than a bare re-handshake over the
@@ -1227,6 +1408,11 @@ func (p *streamTransport) handleSinglePeerData(src uint32, kcpPayload []byte) {
 // #105). We rebuild exactly once per restart; the flag clears when the next
 // peer latches in handleFirstPeer.
 func (p *streamTransport) maybePeerRestart(src uint32) {
+	if !p.linkUnhealthy.Load() {
+		return // no corroborating evidence our own control plane is down -
+		// likely unrelated room churn (another client's epoch), not a
+		// genuine server restart.
+	}
 	if p.peerRestartGrace <= 0 {
 		return
 	}
@@ -1273,6 +1459,7 @@ func (p *streamTransport) handleControlFrame(src, dst uint32, kcpPayload []byte)
 	if dst != p.controlEpochValue() {
 		return
 	}
+	p.alignDataLatchWithControlPeer(src)
 	// Single-peer mode: deliver to the singleton control KCP.
 	p.controlKCPMu.RLock()
 	crt := p.controlKCP

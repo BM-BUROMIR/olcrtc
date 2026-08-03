@@ -6,6 +6,7 @@ import unittest
 from unittest import mock
 
 import managed_rotation
+import yaml
 from bootstrap import decrypt_subscription, encrypt_subscription
 from device_registry import DeviceRegistry
 from managed_rotation import (
@@ -168,6 +169,41 @@ class ServerActivatorTest(unittest.TestCase):
         self.assertIn("install -o root -g ubuntu -m 640", rollback_command)
         self.assertIn("/var/lib/olc-bypass/rotation/", rollback_command)
         self.assertIn("systemctl reset-failed olc.service", rollback_command)
+
+
+class OlcSocksProbeTest(unittest.TestCase):
+    @mock.patch("managed_rotation._run")
+    @mock.patch("managed_rotation.socket.create_connection")
+    @mock.patch("managed_rotation.subprocess.Popen")
+    def test_probe_config_uses_only_supported_runtime_knobs(
+        self,
+        popen: mock.Mock,
+        create_connection: mock.Mock,
+        run: mock.Mock,
+    ) -> None:
+        process = mock.Mock()
+        process.poll.return_value = None
+        popen.return_value = process
+        create_connection.return_value.__enter__.return_value = object()
+        payload = {
+            "subscription": {
+                "carrier": "wbstream",
+                "room": "room",
+                "channel": "channel",
+                "crypto_key": "a" * 64,
+                "transport": "vp8channel",
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            with mock.patch.object(managed_rotation.OlcSocksProbe, "_free_port", return_value=19090):
+                managed_rotation.OlcSocksProbe(pathlib.Path("/bin/olcrtc"), root)(payload)
+            rendered = yaml.safe_load((root / "probe-cnc.yaml").read_text(encoding="utf-8"))
+
+        self.assertEqual(rendered["vp8"], {"fps": 30, "batch_size": 8})
+        self.assertEqual(rendered["socks"]["max_sessions"], 24)
+        self.assertEqual(run.call_count, 2)
 
 
 class ShadowIntegrationTest(unittest.TestCase):

@@ -51,6 +51,15 @@ type File struct {
 	Failover  Failover  `yaml:"failover"`
 	Data      string    `yaml:"data"`
 	Debug     bool      `yaml:"debug"`
+
+	// DeviceID pins the identity announced in CLIENT_HELLO. Without it (and
+	// without DeviceIDPath) every run registers as a brand-new device, so the
+	// server cannot recognise a reconnecting client, per-device accounting
+	// drifts, and session relatching never engages.
+	DeviceID string `yaml:"device_id"`
+	// DeviceIDPath persists a generated device identity across runs. Ignored
+	// when DeviceID is set explicitly.
+	DeviceIDPath string `yaml:"device_id_path"`
 }
 
 // Profile is a failover entry that overrides top-level runtime fields.
@@ -102,17 +111,18 @@ type Net struct {
 
 // SOCKS bundles SOCKS5 listener and outbound-proxy settings.
 type SOCKS struct {
-	Host       string   `yaml:"host"`
-	Port       int      `yaml:"port"`
-	User       string   `yaml:"user"`
-	Pass       string   `yaml:"pass"`
-	BlockPorts []int    `yaml:"block_ports"`
-	BlockHosts []string `yaml:"block_hosts"`
-	BlockCIDRs []string `yaml:"block_cidrs"`
-	ProxyAddr  string   `yaml:"proxy_addr"`
-	ProxyPort  int      `yaml:"proxy_port"`
-	ProxyUser  string   `yaml:"proxy_user"`
-	ProxyPass  string   `yaml:"proxy_pass"`
+	Host        string   `yaml:"host"`
+	Port        int      `yaml:"port"`
+	User        string   `yaml:"user"`
+	Pass        string   `yaml:"pass"`
+	MaxSessions int      `yaml:"max_sessions"`
+	BlockPorts  []int    `yaml:"block_ports"`
+	BlockHosts  []string `yaml:"block_hosts"`
+	BlockCIDRs  []string `yaml:"block_cidrs"`
+	ProxyAddr   string   `yaml:"proxy_addr"`
+	ProxyPort   int      `yaml:"proxy_port"`
+	ProxyUser   string   `yaml:"proxy_user"`
+	ProxyPass   string   `yaml:"proxy_pass"`
 }
 
 // Engine selects a direct SFU connection when Auth.Provider is "none".
@@ -260,11 +270,14 @@ func Apply(dst session.Config, f File) session.Config {
 	dst.Token = pickString(dst.Token, f.Engine.Token)
 	dst.RoomID = pickString(dst.RoomID, f.Room.ID)
 	dst.ChannelID = pickString(dst.ChannelID, f.Room.Channel)
+	dst.DeviceID = pickString(dst.DeviceID, f.DeviceID)
+	dst.DeviceIDPath = pickString(dst.DeviceIDPath, f.DeviceIDPath)
 	dst.KeyHex = pickString(dst.KeyHex, f.Crypto.Key)
 	dst.SOCKSHost = pickString(dst.SOCKSHost, f.SOCKS.Host)
 	dst.SOCKSPort = pickInt(dst.SOCKSPort, f.SOCKS.Port)
 	dst.SOCKSUser = pickString(dst.SOCKSUser, f.SOCKS.User)
 	dst.SOCKSPass = pickString(dst.SOCKSPass, f.SOCKS.Pass)
+	dst.SOCKSMaxSessions = pickInt(dst.SOCKSMaxSessions, f.SOCKS.MaxSessions)
 	dst.SOCKSBlockPorts = pickInts(dst.SOCKSBlockPorts, f.SOCKS.BlockPorts)
 	dst.SOCKSBlockHosts = pickStrings(dst.SOCKSBlockHosts, f.SOCKS.BlockHosts)
 	dst.SOCKSBlockCIDRs = pickStrings(dst.SOCKSBlockCIDRs, f.SOCKS.BlockCIDRs)
@@ -316,6 +329,7 @@ func ApplyProfile(base session.Config, p Profile) session.Config {
 	dst.SOCKSPort = overlayInt(dst.SOCKSPort, p.SOCKS.Port)
 	dst.SOCKSUser = overlayString(dst.SOCKSUser, p.SOCKS.User)
 	dst.SOCKSPass = overlayString(dst.SOCKSPass, p.SOCKS.Pass)
+	dst.SOCKSMaxSessions = overlayInt(dst.SOCKSMaxSessions, p.SOCKS.MaxSessions)
 	dst.SOCKSBlockPorts = overlayInts(dst.SOCKSBlockPorts, p.SOCKS.BlockPorts)
 	dst.SOCKSBlockHosts = overlayStrings(dst.SOCKSBlockHosts, p.SOCKS.BlockHosts)
 	dst.SOCKSBlockCIDRs = overlayStrings(dst.SOCKSBlockCIDRs, p.SOCKS.BlockCIDRs)

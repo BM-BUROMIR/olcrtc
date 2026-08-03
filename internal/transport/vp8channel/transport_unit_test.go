@@ -457,6 +457,9 @@ func mkPeerFrame(token, epoch uint32, payload []byte) []byte {
 	return frame
 }
 
+// ai-generated: added tr.NotifyLinkHealth(true) call + updated comment
+// below, peer-restart-corroboration PR (rest of the test predates it).
+//
 // TestPeerRestartRebuildsCarrierAfterGrace guards issue #105: when the latched
 // peer goes silent past peerRestartGrace and a frame from a fresh epoch
 // arrives, the transport rebuilds the carrier (stream.Reconnect) so the client
@@ -489,8 +492,10 @@ func TestPeerRestartRebuildsCarrierAfterGrace(t *testing.T) {
 	}
 
 	// After the latched peer has been silent past the grace window, a frame
-	// from the new epoch is read as a restart and rebuilds the carrier.
+	// from the new epoch is read as a restart and rebuilds the carrier - but
+	// only once the control-plane liveness loop has corroborated trouble.
 	time.Sleep(15 * time.Millisecond)
+	tr.NotifyLinkHealth(true)
 	tr.handleIncomingFrame(mkPeerFrame(tr.bindingToken, 0x300, []byte("restart")))
 	deadline := time.Now().Add(time.Second)
 	for stream.reconnects.Load() == 0 && time.Now().Before(deadline) {
@@ -504,6 +509,9 @@ func TestPeerRestartRebuildsCarrierAfterGrace(t *testing.T) {
 	}
 }
 
+// ai-generated: added tr.NotifyLinkHealth(true) call below,
+// peer-restart-corroboration PR (rest of the test predates it).
+//
 // TestPeerRestartRebuildsOnlyOnce ensures repeated frames from the new epoch do
 // not trigger a rebuild storm before the latch is reset.
 func TestPeerRestartRebuildsOnlyOnce(t *testing.T) {
@@ -521,6 +529,7 @@ func TestPeerRestartRebuildsOnlyOnce(t *testing.T) {
 
 	tr.handleIncomingFrame(mkPeerFrame(tr.bindingToken, 0x200, []byte("hello")))
 	time.Sleep(15 * time.Millisecond)
+	tr.NotifyLinkHealth(true)
 	for range 5 {
 		tr.handleIncomingFrame(mkPeerFrame(tr.bindingToken, 0x300, []byte("restart")))
 	}
@@ -530,6 +539,9 @@ func TestPeerRestartRebuildsOnlyOnce(t *testing.T) {
 	}
 }
 
+// ai-generated: added the linkUnhealthy default-false assertion below,
+// peer-restart-corroboration PR (rest of the test predates it).
+//
 // TestLivePeerKeepsLatchFresh confirms a peer that keeps sending frames within
 // the grace window never trips the restart watchdog, even if a stray frame from
 // another epoch shows up (unrelated room participant).
@@ -546,6 +558,10 @@ func TestLivePeerKeepsLatchFresh(t *testing.T) {
 	}
 	defer func() { _ = tr.Close() }()
 
+	if tr.linkUnhealthy.Load() {
+		t.Fatal("linkUnhealthy should default to false")
+	}
+
 	tr.handleIncomingFrame(mkPeerFrame(tr.bindingToken, 0x200, nil))
 	// Keep the latched peer alive with frequent keepalives while a foreign
 	// epoch repeatedly shows up. The latch stays fresh, so no rebuild fires.
@@ -556,6 +572,92 @@ func TestLivePeerKeepsLatchFresh(t *testing.T) {
 	}
 	if got := stream.reconnects.Load(); got != 0 {
 		t.Fatalf("carrier rebuilt %d times for a live peer, want 0", got)
+	}
+}
+
+// ai-generated: new test, peer-restart-corroboration PR.
+//
+// TestPeerRestartSuppressedWhenControlHealthy reproduces the multi-client SFU
+// scenario directly: a second, unrelated room participant's epoch shows up
+// after the latched peer's silence exceeds peerRestartGrace, but the client's
+// own control-plane liveness never reported trouble. The heuristic must not
+// tear down a perfectly healthy carrier over unrelated room noise.
+func TestPeerRestartSuppressedWhenControlHealthy(t *testing.T) {
+	stream := &fakeVideoStream{canSend: true}
+	tr := &streamTransport{
+		stream:           stream,
+		outbound:         make(chan []byte, 16),
+		closeCh:          make(chan struct{}),
+		writerDone:       make(chan struct{}),
+		bindingToken:     bindingToken("client"),
+		localEpoch:       0x100,
+		peerRestartGrace: 10 * time.Millisecond,
+	}
+	defer func() { _ = tr.Close() }()
+
+	// Latch the real server epoch, then let it go quiet past the grace
+	// window - a normal, brief silence, not a real restart.
+	tr.handleIncomingFrame(mkPeerFrame(tr.bindingToken, 0x200, []byte("hello")))
+	time.Sleep(15 * time.Millisecond)
+
+	// A second olcbox client joins the same Telemost room; the SFU broadcasts
+	// its epoch to everyone, us included. linkUnhealthy is never set.
+	tr.handleIncomingFrame(mkPeerFrame(tr.bindingToken, 0x0a301844, []byte("second client")))
+	time.Sleep(50 * time.Millisecond)
+
+	if got := stream.reconnects.Load(); got != 0 {
+		t.Fatalf("carrier rebuilt %d times for an unrelated peer with healthy control plane, want 0", got)
+	}
+}
+
+// ai-generated: new test, peer-restart-corroboration PR.
+//
+// TestPeerRestartFiresOnceCorroborated confirms NotifyLinkHealth(true) is a
+// gate, not a permanent disable: with corroborating evidence the client's own
+// link is down, the same foreign-epoch frame still triggers the fast-path
+// carrier rebuild.
+func TestPeerRestartFiresOnceCorroborated(t *testing.T) {
+	stream := &fakeVideoStream{canSend: true}
+	tr := &streamTransport{
+		stream:           stream,
+		outbound:         make(chan []byte, 16),
+		closeCh:          make(chan struct{}),
+		writerDone:       make(chan struct{}),
+		bindingToken:     bindingToken("client"),
+		localEpoch:       0x100,
+		peerRestartGrace: 10 * time.Millisecond,
+	}
+	defer func() { _ = tr.Close() }()
+
+	tr.handleIncomingFrame(mkPeerFrame(tr.bindingToken, 0x200, []byte("hello")))
+	time.Sleep(15 * time.Millisecond)
+	tr.NotifyLinkHealth(true)
+	tr.handleIncomingFrame(mkPeerFrame(tr.bindingToken, 0x300, []byte("restart")))
+
+	deadline := time.Now().Add(time.Second)
+	for stream.reconnects.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if got := stream.reconnects.Load(); got != 1 {
+		t.Fatalf("carrier rebuilds when corroborated = %d, want 1", got)
+	}
+}
+
+// ai-generated: new test, peer-restart-corroboration PR.
+//
+// TestNotifyLinkHealthTogglesGuard is a direct unit test of the setter.
+func TestNotifyLinkHealthTogglesGuard(t *testing.T) {
+	tr := &streamTransport{}
+	if tr.linkUnhealthy.Load() {
+		t.Fatal("zero-value linkUnhealthy should be false")
+	}
+	tr.NotifyLinkHealth(true)
+	if !tr.linkUnhealthy.Load() {
+		t.Fatal("NotifyLinkHealth(true) did not set linkUnhealthy")
+	}
+	tr.NotifyLinkHealth(false)
+	if tr.linkUnhealthy.Load() {
+		t.Fatal("NotifyLinkHealth(false) did not clear linkUnhealthy")
 	}
 }
 
@@ -629,5 +731,138 @@ func TestSeqLessWrapAround(t *testing.T) {
 		if got := seqLess(c.a, c.b); got != c.want {
 			t.Fatalf("seqLess(%d, %d) = %v, want %v", c.a, c.b, got, c.want)
 		}
+	}
+}
+
+// A deployment straddling the switch to per-channel binding must keep working:
+// receivers honour both tokens, so either side can be upgraded first.
+func TestBindingTokenCompatAcrossVersions(t *testing.T) {
+	cfg := transport.Config{
+		RoomURL:   "https://example.invalid/room/abc",
+		ChannelID: "chan-xyz",
+	}
+
+	legacy := legacyBindingToken(cfg)
+	perChannel := channelBindingToken(cfg)
+	if legacy == perChannel {
+		t.Fatal("test config does not actually distinguish the two schemes")
+	}
+
+	accepted := acceptedBindingTokens(cfg)
+	if len(accepted) != 2 {
+		t.Fatalf("acceptedBindingTokens() = %v, want both schemes", accepted)
+	}
+	var sawLegacy, sawPerChannel bool
+	for _, tok := range accepted {
+		switch tok {
+		case legacy:
+			sawLegacy = true
+		case perChannel:
+			sawPerChannel = true
+		}
+	}
+	if !sawLegacy || !sawPerChannel {
+		t.Fatalf("acceptedBindingTokens() = %v, want to contain 0x%08x and 0x%08x",
+			accepted, legacy, perChannel)
+	}
+}
+
+// Default sending stays on the legacy token: an un-upgraded peer accepts
+// nothing else, and an upgraded peer accepts both.
+func TestSendBindingTokenDefaultsToLegacy(t *testing.T) {
+	cfg := transport.Config{
+		RoomURL:   "https://example.invalid/room/abc",
+		ChannelID: "chan-xyz",
+	}
+	if got, want := sendBindingToken(cfg), legacyBindingToken(cfg); got != want {
+		t.Fatalf("sendBindingToken() = 0x%08x, want legacy 0x%08x", got, want)
+	}
+	cfg.PerChannelBinding = true
+	if got, want := sendBindingToken(cfg), channelBindingToken(cfg); got != want {
+		t.Fatalf("sendBindingToken(PerChannelBinding) = 0x%08x, want 0x%08x", got, want)
+	}
+}
+
+// Without a ChannelID both schemes coincide, so nothing is duplicated.
+func TestAcceptedBindingTokensDedupesWhenSchemesAgree(t *testing.T) {
+	cfg := transport.Config{RoomURL: "https://example.invalid/room/abc"}
+	if got := acceptedBindingTokens(cfg); len(got) != 1 {
+		t.Fatalf("acceptedBindingTokens() = %v, want a single token", got)
+	}
+}
+
+// A token belonging to neither scheme is still rejected: compatibility must not
+// turn into "accept anything".
+func TestAcceptsBindingTokenRejectsForeignToken(t *testing.T) {
+	cfg := transport.Config{
+		RoomURL:   "https://example.invalid/room/abc",
+		ChannelID: "chan-xyz",
+	}
+	p := &streamTransport{acceptedTokens: acceptedBindingTokens(cfg)}
+	if !p.acceptsBindingToken(legacyBindingToken(cfg)) {
+		t.Fatal("legacy token rejected")
+	}
+	if !p.acceptsBindingToken(channelBindingToken(cfg)) {
+		t.Fatal("per-channel token rejected")
+	}
+	if p.acceptsBindingToken(bindingToken("some-other-room")) {
+		t.Fatal("foreign token accepted")
+	}
+}
+
+// A client that latched onto another participant's data epoch must re-point at
+// the server as soon as the server addresses its control epoch. Without this the
+// data plane stays bound to a peer that never answers while the control plane
+// keeps reporting health, so nothing ever detects the dead tunnel.
+func TestAlignDataLatchWithControlPeerRepointsToServer(t *testing.T) {
+	p := &streamTransport{}
+	p.localEpoch = 0x00000111
+	const foreignClientData = 0x0b2f83f7
+	const serverData = 0x3293b8d8
+
+	p.handleFirstPeer(foreignClientData)
+	if got := p.peerEpoch.Load(); got != foreignClientData {
+		t.Fatalf("setup: peerEpoch = 0x%08x, want 0x%08x", got, foreignClientData)
+	}
+
+	p.alignDataLatchWithControlPeer(serverData | controlEpochFlag)
+
+	if got := p.peerEpoch.Load(); got != serverData {
+		t.Fatalf("peerEpoch = 0x%08x, want server 0x%08x", got, serverData)
+	}
+}
+
+// When the latch is already the control peer, nothing changes and no rebuild is
+// provoked.
+func TestAlignDataLatchWithControlPeerIsNoOpWhenCorrect(t *testing.T) {
+	p := &streamTransport{}
+	p.localEpoch = 0x00000111
+	const serverData = 0x3293b8d8
+
+	p.handleFirstPeer(serverData)
+	before := p.lastPeerFrameNano.Load()
+
+	p.alignDataLatchWithControlPeer(serverData | controlEpochFlag)
+
+	if got := p.peerEpoch.Load(); got != serverData {
+		t.Fatalf("peerEpoch = 0x%08x, want 0x%08x", got, serverData)
+	}
+	if p.lastPeerFrameNano.Load() != before {
+		t.Fatal("latch was re-armed even though it already pointed at the control peer")
+	}
+}
+
+// A control epoch that masks down to zero is not a usable data epoch and must be
+// ignored rather than clearing a good latch.
+func TestAlignDataLatchWithControlPeerIgnoresZero(t *testing.T) {
+	p := &streamTransport{}
+	p.localEpoch = 0x00000111
+	const serverData = 0x3293b8d8
+
+	p.handleFirstPeer(serverData)
+	p.alignDataLatchWithControlPeer(controlEpochFlag)
+
+	if got := p.peerEpoch.Load(); got != serverData {
+		t.Fatalf("peerEpoch = 0x%08x, want unchanged 0x%08x", got, serverData)
 	}
 }
