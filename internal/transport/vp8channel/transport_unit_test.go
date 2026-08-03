@@ -19,6 +19,11 @@ import (
 
 var errVP8UnitBoom = errors.New("boom")
 
+const (
+	testBindingRoomURL   = "https://example.invalid/room/abc"
+	testBindingChannelID = "chan-xyz"
+)
+
 // TestControlEpochTracksDataEpoch guards the issue #95 multi-client invariant:
 // the control-plane epoch is derived live from the data epoch as
 // localEpoch|controlEpochFlag. This lets the server correlate a client's data
@@ -661,6 +666,47 @@ func TestNotifyLinkHealthTogglesGuard(t *testing.T) {
 	}
 }
 
+// ai-generated: new tests for incoming VP8 track loss state.
+func TestIncomingTrackLossStateRecordsTransientLoss(t *testing.T) {
+	tr := &streamTransport{stream: &fakeVideoStream{canSend: true}}
+
+	state := tr.IncomingTrackLossState()
+	if state.Lost || state.Transient {
+		t.Fatalf("zero loss state = %+v, want no loss", state)
+	}
+
+	tr.recordIncomingTrackLoss()
+	state = tr.IncomingTrackLossState()
+	if !state.Lost || !state.Transient {
+		t.Fatalf("loss state with live subscriber = %+v, want transient loss", state)
+	}
+}
+
+// ai-generated: new test for incoming VP8 track loss state reset.
+func TestIncomingTrackLossStateResetOnNewVP8Track(t *testing.T) {
+	tr := &streamTransport{stream: &fakeVideoStream{canSend: true}}
+	tr.recordIncomingTrackLoss()
+
+	tr.resetIncomingTrackLoss()
+
+	state := tr.IncomingTrackLossState()
+	if state.Lost || state.Transient {
+		t.Fatalf("loss state after reset = %+v, want no loss", state)
+	}
+}
+
+// ai-generated: new test for non-transient incoming VP8 track loss state.
+func TestIncomingTrackLossStateRecordsNonTransientLoss(t *testing.T) {
+	tr := &streamTransport{stream: &fakeVideoStream{canSend: false}}
+
+	tr.recordIncomingTrackLoss()
+
+	state := tr.IncomingTrackLossState()
+	if !state.Lost || state.Transient {
+		t.Fatalf("loss state with dead subscriber = %+v, want non-transient loss", state)
+	}
+}
+
 func seqList(pkts []*rtp.Packet) []uint16 {
 	out := make([]uint16, len(pkts))
 	for i, p := range pkts {
@@ -738,8 +784,8 @@ func TestSeqLessWrapAround(t *testing.T) {
 // receivers honour both tokens, so either side can be upgraded first.
 func TestBindingTokenCompatAcrossVersions(t *testing.T) {
 	cfg := transport.Config{
-		RoomURL:   "https://example.invalid/room/abc",
-		ChannelID: "chan-xyz",
+		RoomURL:   testBindingRoomURL,
+		ChannelID: testBindingChannelID,
 	}
 
 	legacy := legacyBindingToken(cfg)
@@ -771,8 +817,8 @@ func TestBindingTokenCompatAcrossVersions(t *testing.T) {
 // nothing else, and an upgraded peer accepts both.
 func TestSendBindingTokenDefaultsToLegacy(t *testing.T) {
 	cfg := transport.Config{
-		RoomURL:   "https://example.invalid/room/abc",
-		ChannelID: "chan-xyz",
+		RoomURL:   testBindingRoomURL,
+		ChannelID: testBindingChannelID,
 	}
 	if got, want := sendBindingToken(cfg), legacyBindingToken(cfg); got != want {
 		t.Fatalf("sendBindingToken() = 0x%08x, want legacy 0x%08x", got, want)
@@ -785,7 +831,7 @@ func TestSendBindingTokenDefaultsToLegacy(t *testing.T) {
 
 // Without a ChannelID both schemes coincide, so nothing is duplicated.
 func TestAcceptedBindingTokensDedupesWhenSchemesAgree(t *testing.T) {
-	cfg := transport.Config{RoomURL: "https://example.invalid/room/abc"}
+	cfg := transport.Config{RoomURL: testBindingRoomURL}
 	if got := acceptedBindingTokens(cfg); len(got) != 1 {
 		t.Fatalf("acceptedBindingTokens() = %v, want a single token", got)
 	}
@@ -795,8 +841,8 @@ func TestAcceptedBindingTokensDedupesWhenSchemesAgree(t *testing.T) {
 // turn into "accept anything".
 func TestAcceptsBindingTokenRejectsForeignToken(t *testing.T) {
 	cfg := transport.Config{
-		RoomURL:   "https://example.invalid/room/abc",
-		ChannelID: "chan-xyz",
+		RoomURL:   testBindingRoomURL,
+		ChannelID: testBindingChannelID,
 	}
 	p := &streamTransport{acceptedTokens: acceptedBindingTokens(cfg)}
 	if !p.acceptsBindingToken(legacyBindingToken(cfg)) {

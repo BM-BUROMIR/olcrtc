@@ -104,6 +104,22 @@ type LinkHealthObserver interface {
 	NotifyLinkHealth(unhealthy bool)
 }
 
+// IncomingTrackLossState reports whether an incoming carrier video track ended.
+//
+// ai-generated: new state type for vp8channel transient track loss.
+type IncomingTrackLossState struct {
+	Lost      bool
+	Transient bool
+}
+
+// IncomingTrackLossObserver is implemented by transports that can distinguish
+// incoming track loss from full carrier disconnect.
+//
+// ai-generated: new observer interface for vp8channel transient track loss.
+type IncomingTrackLossObserver interface {
+	IncomingTrackLossState() IncomingTrackLossState
+}
+
 // Options is a marker for per-transport option structs. Each transport package
 // defines its own Options type (e.g. videochannel.Options) and registers a
 // factory that consumes it via type assertion. A nil Options is valid for
